@@ -1,0 +1,11 @@
+import {readFileSync,writeFileSync,existsSync} from 'node:fs';
+import {fileURLToPath} from 'node:url';
+const value=process.argv[2],url=new URL(value);
+if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash||url.pathname!=='/')throw Error('Use an HTTPS origin without a path');
+const path=fileURLToPath(new URL('../.env',import.meta.url));
+const old=existsSync(path)?readFileSync(path,'utf8'):'';
+const line='PUBLIC_URL='+url.origin;
+const next=/^PUBLIC_URL=.*$/m.test(old)?old.replace(/^PUBLIC_URL=.*$/gm,line):old+(old.endsWith('\n')||!old?'':'\n')+line+'\n';
+writeFileSync(path,next);
+writeFileSync(fileURLToPath(new URL('../.tools/public-url.txt',import.meta.url)),url.origin+'\n');
+console.log('PUBLIC_URL saved: '+url.origin);

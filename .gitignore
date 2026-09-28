@@ -1,0 +1,27 @@
+.env
+data/
+node_modules/
+.gradle/
+**/build/
+local.properties
+*.log
+.tools/
+dist/
+
+# Local secrets, signing keys and machine-specific settings
+.env.*
+!.env.example
+*.jks
+*.keystore
+*.pem
+*.key
+*.p12
+*.pfx
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

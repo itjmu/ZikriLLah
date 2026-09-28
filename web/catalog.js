@@ -1,0 +1,98 @@
+export const builtinZikrs=[
+  {
+    "id": "subhanallah",
+    "name": "Субханаллах",
+    "arabic": "سُبْحَانَ ٱللَّٰهِ",
+    "meaning": "Пречист Аллах",
+    "englishName": "Subhanallah",
+    "englishMeaning": "Glory be to Allah"
+  },
+  {
+    "id": "alhamdulillah",
+    "name": "Альхамдулиллях",
+    "arabic": "ٱلْحَمْدُ لِلَّٰهِ",
+    "meaning": "Хвала Аллаху",
+    "englishName": "Alhamdulillah",
+    "englishMeaning": "Praise be to Allah"
+  },
+  {
+    "id": "allahuakbar",
+    "name": "Аллаху акбар",
+    "arabic": "ٱللَّٰهُ أَكْبَرُ",
+    "meaning": "Аллах велик",
+    "englishName": "Allahu akbar",
+    "englishMeaning": "Allah is the Greatest"
+  },
+  {
+    "id": "lailahaillallah",
+    "name": "Ля иляха илляллах",
+    "arabic": "لَا إِلَٰهَ إِلَّا اللَّهُ",
+    "meaning": "Нет божества, кроме Аллаха",
+    "englishName": "La ilaha illallah",
+    "englishMeaning": "There is no deity except Allah"
+  },
+  {
+    "id": "astaghfirullah",
+    "name": "Астагфируллах",
+    "arabic": "أَسْتَغْفِرُ اللَّهَ",
+    "meaning": "Прошу прощения у Аллаха",
+    "englishName": "Astaghfirullah",
+    "englishMeaning": "I seek forgiveness from Allah"
+  },
+  {
+    "id": "subhanallahiwabihamdihi",
+    "name": "Субханаллахи ва бихамдихи",
+    "arabic": "سُبْحَانَ اللَّهِ وَبِحَمْدِهِ",
+    "meaning": "Пречист Аллах, и хвала Ему",
+    "englishName": "Subhanallahi wa bihamdihi",
+    "englishMeaning": "Glory and praise be to Allah"
+  },
+  {
+    "id": "subhanallahilazim",
+    "name": "Субханаллахиль-Азым",
+    "arabic": "سُبْحَانَ اللَّهِ الْعَظِيمِ",
+    "meaning": "Пречист Аллах Великий",
+    "englishName": "Subhanallahil Azim",
+    "englishMeaning": "Glory be to Allah, the Magnificent"
+  },
+  {
+    "id": "lahawla",
+    "name": "Ля хауля ва ля куввата илля биллях",
+    "arabic": "لَا حَوْلَ وَلَا قُوَّةَ إِلَّا بِاللَّهِ",
+    "meaning": "Нет силы и мощи, кроме как у Аллаха",
+    "englishName": "La hawla wa la quwwata illa billah",
+    "englishMeaning": "There is no power or strength except through Allah"
+  },
+  {
+    "id": "salawat",
+    "name": "Салават",
+    "arabic": "اللَّهُمَّ صَلِّ وَسَلِّمْ عَلَى نَبِيِّنَا مُحَمَّدٍ",
+    "meaning": "О Аллах, благослови и приветствуй нашего пророка Мухаммада",
+    "englishName": "Salawat",
+    "englishMeaning": "O Allah, bless and grant peace to our Prophet Muhammad"
+  },
+  {
+    "id": "hasbunallah",
+    "name": "Хасбуналлаху ва нималь-вакиль",
+    "arabic": "حَسْبُنَا اللَّهُ وَنِعْمَ الْوَكِيلُ",
+    "meaning": "Достаточно нам Аллаха, и Он — лучший Покровитель",
+    "englishName": "Hasbunallahu wa nimal wakil",
+    "englishMeaning": "Allah is sufficient for us, and He is the best Trustee"
+  },
+  {
+    "id": "lailahaantasubhanaka",
+    "name": "Ля иляха илля анта, субханака",
+    "arabic": "لَا إِلَٰهَ إِلَّا أَنْتَ سُبْحَانَكَ إِنِّي كُنْتُ مِنَ الظَّالِمِينَ",
+    "meaning": "Нет божества, кроме Тебя! Пречист Ты! Воистину, я был из несправедливых",
+    "englishName": "La ilaha illa anta, subhanaka",
+    "englishMeaning": "There is no deity except You. Glory be to You. Indeed, I was among the wrongdoers"
+  },
+  {
+    "id": "rabbighfirli",
+    "name": "Рабби-гфир ли",
+    "arabic": "رَبِّ اغْفِرْ لِي",
+    "meaning": "Господи, прости меня",
+    "englishName": "Rabbighfir li",
+    "englishMeaning": "My Lord, forgive me"
+  }
+];
