@@ -1,0 +1,6 @@
+[Unit]
+Description=ZikriLLah consistent private backup
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /opt/zikrillah/app/deploy/backup.sh

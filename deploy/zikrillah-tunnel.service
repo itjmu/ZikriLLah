@@ -1,0 +1,18 @@
+[Unit]
+Description=ZikriLLah temporary HTTPS tunnel
+Wants=network-online.target
+After=network-online.target zikrillah.service
+
+[Service]
+User=zikrillah
+Group=zikrillah
+ExecStart=/opt/zikrillah/cloudflared tunnel --no-autoupdate --protocol http2 --url http://127.0.0.1:3107
+Restart=on-failure
+RestartSec=15
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
