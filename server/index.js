@@ -1,3 +1,4 @@
+import {telegramUser} from './telegram-auth.js';
 import {publicExperience} from './experience.js';
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
@@ -7,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { createStore } from './store.js';
 const files = { '/':'index.html', '/app.js':'app.js', '/model.js':'model.js', '/reorder.js':'reorder.js', '/experience.js':'experience.js', '/catalog.js':'catalog.js', '/publication.js':'publication.js', '/links.js':'links.js', '/haptics.js':'haptics.js', '/style.css':'style.css', '/sw.js':'sw.js', '/manifest.webmanifest':'manifest.webmanifest', '/icon.svg':'icon.svg' };
 const mime = { html:'text/html; charset=utf-8', js:'text/javascript', css:'text/css', wav:'audio/wav', webmanifest:'application/manifest+json', svg:'image/svg+xml' };
-export function createAppServer(store,dir='./data'){return http.createServer(async(req,res) => {
+export function createAppServer(store,dir='./data',auth={}){return http.createServer(async(req,res) => {
   const send = (status,data) => { res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'}); res.end(JSON.stringify(data)); };
   try {
     const path = new URL(req.url,'http://localhost').pathname;
@@ -21,10 +22,25 @@ export function createAppServer(store,dir='./data'){return http.createServer(asy
         res.writeHead(206,{...headers,'Content-Range':'bytes '+start+'-'+end+'/'+data.length,'Content-Length':end-start+1});return res.end(data.subarray(start,end+1));}
       res.writeHead(200,{...headers,'Content-Length':data.length});return res.end(data);
     }
-    if (req.method === 'POST' && ['/api/link','/api/sync'].includes(path)) {
+    if (req.method === 'POST' && ['/api/link','/api/sync','/api/auth/telegram','/api/auth/device','/api/auth/poll'].includes(path)) {
       let body='';
       for await (const chunk of req) { body+=chunk; if(Buffer.byteLength(body)>2000000) return send(413,{error:'Слишком большой запрос'}); }
       let data; try { data=JSON.parse(body); } catch { return send(400,{error:'Некорректный JSON'}); }
+      if(path==='/api/auth/telegram'){
+        let profile;try{profile=telegramUser(data?.initData,auth.botToken||process.env.BOT_TOKEN);}catch{return send(401,{error:'Telegram login invalid or expired'});}
+        const previous=store.user((req.headers.authorization||'').replace(/^Bearer /,''));
+        if(previous&&previous!==String(profile.id))return send(409,{error:'Другой Telegram-аккаунт уже подключён. Откройте приложение в отдельном профиле браузера.'});
+        store.profile(profile.id,profile.first_name);return send(200,{token:previous?(req.headers.authorization||'').slice(7):store.token(profile.id)});
+      }
+      if(path==='/api/auth/device'){
+        const username=auth.botUsername||process.env.BOT_USERNAME;
+        if(!/^[a-zA-Z0-9_]{5,32}$/.test(username||''))return send(503,{error:'Bot is not configured'});
+        try{const result=store.beginDevice();return send(200,{...result,url:'https://t.me/'+username+'?start=connect_'+result.id});}catch{return send(429,{error:'Try later'});}
+      }
+      if(path==='/api/auth/poll'){
+        if(typeof data?.id!=='string'||!/^[a-f0-9]{24}$/.test(data.id))return send(400,{error:'Invalid request'});
+        const result=store.pollDevice(data.id,data.secret);return result?send(200,result):send(410,{error:'Connection request expired'});
+      }
       if(path==='/api/link') {
         if(typeof data?.code !== 'string' || !/^[a-f0-9]{24}$/.test(data.code)) return send(400,{error:'Некорректный код'});
         const token=store.redeem(data.code);

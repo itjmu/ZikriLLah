@@ -13,15 +13,16 @@ public final class SyncEngine {
     private static final AtomicBoolean RUNNING=new AtomicBoolean();
     public static volatile String status="Прогресс сохраняется на устройстве";
     public interface Completion {void finish(boolean retry);}
-    public static void start(Context context,Completion done){
+    public static void start(Context context,Completion done){start(context,false,done);}
+    public static void start(Context context,boolean manual,Completion done){
         Context app=context.getApplicationContext();ZikrStore store=ZikrStore.get(app);
-        if(!store.linked()||ZikrApplication.foreground||!store.needsSync()){if(done!=null)done.finish(false);return;}
+        if(!store.linked()){if(done!=null)done.finish(false);return;}
         if(!RUNNING.compareAndSet(false,true)){if(done!=null)done.finish(true);return;}
         EXECUTOR.execute(()->{
             boolean retry=false;
             try{
-                if(ZikrApplication.foreground)return;
-                if(!store.claimSync()){status="Прогресс сохранён · обмен позже";return;}
+                if(!manual&&!store.claimSync()){status="Прогресс сохранён · обмен позже";return;}
+                if(manual)store.put("syncSlot",String.valueOf(SyncPolicy.slot(System.currentTimeMillis(),java.time.ZoneId.systemDefault())));
                 store.put("syncRequested","false");
                 status="Объединяем прогресс…";
                 // Bound a job's duration. The next scheduled job continues a large backlog.
@@ -38,7 +39,7 @@ public final class SyncEngine {
                 }
                 retry=store.queued()>0;if(retry)store.requestSync();status=retry?"Прогресс сохранён · отправляем очередь":"Всё сохранено и синхронизировано";
             }catch(Exception e){store.requestSync();store.put("syncRetryAt",String.valueOf(System.currentTimeMillis()+15*60*1000L));retry=true;status=e instanceof AuthException?"Привязка недействительна · проверьте аккаунт":"Офлайн или сервер недоступен · прогресс на устройстве";}
-            finally{RUNNING.set(false);if(done!=null)done.finish(retry);}
+            finally{RUNNING.set(false);SyncJobs.schedule(app,true);if(done!=null)done.finish(retry);}
         });
     }
     public static JSONObject request(String base,String path,JSONObject body,String token)throws Exception{

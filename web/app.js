@@ -18,6 +18,7 @@ if(!zikrs.some(z=>z.id===state.selected))state.selected=zikrs[0].id;
 state.soundEnabled??=state.feedbackMode===0;state.vibrationEnabled??=state.feedbackMode<2;state.silent??=state.feedbackMode===2;
 if(!translations[state.language])state.language='ru';
 if(state.theme==='stealth'){state.stealth=true;state.theme=state.previousTheme&&state.previousTheme!=='stealth'?state.previousTheme:'emerald';}
+let telegramReady=!window.Telegram?.WebApp?.initData;
 let busy=false,linking=false,timer,page='home',statusKey='local';const tapGate=new TapGate();
 const t=key=>translations[state.language][key]||key;
 const localized=z=>state.language==='en'?[z.englishName||z.name,z.englishMeaning||z.meaning]:[z.name,z.meaning];
@@ -49,7 +50,7 @@ function render(){
   if(page==='stats'){const week=weekCounts(state.events),maximum=Math.max(1,...week.map(d=>d.count));$('weekChart').replaceChildren();for(const day of week){const bar=document.createElement('div'),number=document.createElement('strong'),fill=document.createElement('i'),label=document.createElement('small');number.textContent=day.count;fill.style.height=Math.max(3,100*day.count/maximum)+'px';label.textContent=day.date.toLocaleDateString(state.language,{day:'2-digit',month:'2-digit'});bar.append(number,fill,label);$('weekChart').append(bar);}}
   $('soundChoice').value=state.clickSound;
   renderPublication($('publication'),state.content,state.language);
-  $('account').textContent=state.token?'✓ Telegram':'↗ Telegram';$('account').setAttribute('aria-label',t(state.token?'connected':'connect')); $('status').textContent=t(statusKey);
+  $('account').textContent=state.token?'↻ Telegram':'↗ Telegram';$('account').setAttribute('aria-label',t(state.token?'connected':'connect')); $('status').textContent=t(statusKey);
   for(const button of document.querySelectorAll('[data-zikr]')){const z=zikrs.find(z=>z.id===button.dataset.zikr);const [name,meaning]=localized(z);button.querySelector('span').textContent=name;button.querySelector('small').textContent=meaning;button.classList.toggle('active',z.id===state.selected);}
   $('cycleLanguage').textContent=state.language==='ru'?'RU':'ENG';$('cycleLanguage').setAttribute('aria-label',t('language'));
   const icons={light:'☀',dark:'☾',black:'●',emerald:'✦'};$('cycleTheme').textContent=icons[state.theme]||'✦';$('cycleTheme').setAttribute('aria-label',t('theme')+': '+t(state.theme));$('cycleTheme').title=t('theme')+': '+t(state.theme);
@@ -73,7 +74,7 @@ function rebuildZikrs(){
     const grip=document.createElement('button');grip.className='drag-grip';grip.textContent='⠿';grip.setAttribute('aria-label',(state.language==='ru'?'Переместить: ':'Move: ')+localized(z)[0]);
     const button=document.createElement('button');button.className='wide zikr-option';button.dataset.zikr=z.id;button.append(document.createElement('span'),document.createElement('small'));button.onclick=()=>{state.selected=z.id;save();render();};
     row.append(grip,button);
-    if(z.id.startsWith('custom-')){const remove=document.createElement('button');remove.className='remove-zikr';remove.textContent='🗑';remove.setAttribute('aria-label',(state.language==='ru'?'Удалить: ':'Delete: ')+z.name);remove.onclick=()=>{if(!confirm(state.language==='ru'?'Удалить «'+z.name+'»? История счёта сохранится.':'Delete “'+z.name+'”? Count history will be kept.'))return;state.deletedZikrs=[...new Set([...state.deletedZikrs,z.id])];save();render();sync();};row.append(remove);}
+    if(z.id.startsWith('custom-')){const remove=document.createElement('button');remove.className='remove-zikr';remove.textContent='🗑';remove.setAttribute('aria-label',(state.language==='ru'?'Удалить: ':'Delete: ')+z.name);remove.onclick=()=>{if(!confirm(state.language==='ru'?'Удалить «'+z.name+'»? История счёта сохранится.':'Delete “'+z.name+'”? Count history will be kept.'))return;state.deletedZikrs=[...new Set([...state.deletedZikrs,z.id])];save();render();};row.append(remove);}
     (chosen.includes(z.id)?top:bottom).append(row);
   });
 
@@ -84,7 +85,7 @@ $('customZikrForm').onsubmit=e=>{e.preventDefault();if(state.customZikrs.length>
   const z={id:'custom-'+crypto.randomUUID(),name,arabic:$('customArabic').value.trim(),meaning:$('customMeaning').value.trim()};
   state.customZikrs.push(z);const previous=state.selected;state.selected=z.id;
   try{save();}catch{state.customZikrs.pop();state.selected=previous;alert(t('storage'));return;}
-  $('customZikrForm').reset();$('customError').textContent='';render();sync();
+  $('customZikrForm').reset();$('customError').textContent='';render();scheduledSync();
 };
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
 document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{setPage(b.dataset.page);render();});
@@ -95,7 +96,7 @@ for(const key of ['soundEnabled','vibrationEnabled','silent'])$(key).onchange=e=
 $('cycleLanguage').onclick=()=>{state.language=state.language==='ru'?'en':'ru';save();render();};
 $('cycleTheme').onclick=()=>{const themes=['emerald','light','dark','black',...(state.experience?.themes||[]).map(t=>t.id)];state.theme=themes[(themes.indexOf(state.theme)+1)%themes.length];save();render();};
 $('quickStealth').onclick=()=>{state.stealth=!state.stealth;save();$('drawer').close();render();};
-$('account').onclick=()=>{if(state.token)return;$('drawer').close();$('linkDialog').showModal();};
+$('account').onclick=()=>{if(state.token){sync();return;}$('drawer').close();$('linkDialog').showModal();};
 $('testVibration').onclick=()=>{$('hapticStatus').textContent=t(haptic(true)==='unavailable'?'hapticMissing':'hapticSent');};
 $('stealthToggle').onclick=()=>{state.stealth=!state.stealth;save();$('drawer').close();render();};
 function updateClock(){if(!state.stealth)return;const date=new Date();$('clockTime').textContent=date.toLocaleTimeString(state.language,{hour:'2-digit',minute:'2-digit',hour12:false});$('clockDate').textContent=date.toLocaleDateString(state.language,{weekday:'long',day:'numeric',month:'long'});$('stealthClock').style.transform='translate('+((date.getMinutes()%3-1)*4)+'px,'+((Math.floor(date.getMinutes()/3)%3-1)*4)+'px)';}
@@ -109,7 +110,7 @@ function addZikr(){
   if(complete&&state.autoNext)state.selected=nextInCycle(zikrs,state.cycleZikrs,state.selected);
   try{save();}catch{state.events.pop();state.pending.pop();countedEvents=null;state.selected=previousSelected;setStatus('storage');alert(t('storage'));return;}
   const feedback=feedbackPolicy(state,complete);if(feedback.sound)clickSound();if(feedback.vibrate)haptic(complete);setStatus(state.token?'pending':'local');render();
-  if(!timer)timer=setTimeout(()=>{timer=null;sync();},2500);
+
 }
 // Physical taps use only pointerup; the browser's subsequent click never counts again.
 let pointer=null;
@@ -123,16 +124,29 @@ $('surface').addEventListener('dblclick',e=>e.preventDefault());
 $('goal').onchange=e=>{const n=Number(e.target.value);if(!Number.isInteger(n)||n<1||n>100000){e.target.value=state.goal;return;}state.goal=n;save();render();};$('interval').onchange=e=>{state.tapInterval=Number(e.target.value);save();};
 for(const [id,key] of [['textToggle','showText'],['autoNext','autoNext']])$(id).onchange=e=>{state[key]=e.target.checked;save();render();};
 async function post(path,body){const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${state.token}`},body:JSON.stringify(body),signal:AbortSignal.timeout(15000)});const data=await response.json();if(!response.ok)throw Error(data.error||'Sync failed');return data;}
-async function sync(){if(busy||!state.token||!navigator.onLine)return;busy=true;setStatus('syncing');try{do{const batch=state.pending.slice(0,5000),data=await post('/api/sync',{events:batch,customZikrs:state.customZikrs,deletedZikrs:state.deletedZikrs});const customZikrs=[...new Map([...(data.customZikrs||[]),...state.customZikrs].map(z=>[z.id,z])).values()];const next={...state,customZikrs,deletedZikrs:[...new Set([...state.deletedZikrs,...(data.deletedZikrs||[])])],content:data.content??null,experience:data.experience??state.experience,...mergeSync(state.pending,batch,data.events)};localStorage.setItem(storageKey,JSON.stringify(next));state=next;render();}while(state.pending.length);setStatus('synced');}catch{setStatus(navigator.onLine?'error':'offline');}finally{busy=false;}}
+async function sync(){if(!telegramReady||busy||!state.token||!navigator.onLine)return;busy=true;setStatus('syncing');try{do{const batch=state.pending.slice(0,5000),data=await post('/api/sync',{events:batch,customZikrs:state.customZikrs,deletedZikrs:state.deletedZikrs});const customZikrs=[...new Map([...(data.customZikrs||[]),...state.customZikrs].map(z=>[z.id,z])).values()];const next={...state,customZikrs,deletedZikrs:[...new Set([...state.deletedZikrs,...(data.deletedZikrs||[])])],content:data.content??null,experience:data.experience??state.experience,...mergeSync(state.pending,batch,data.events)};localStorage.setItem(storageKey,JSON.stringify(next));state=next;render();}while(state.pending.length);setStatus('synced');}catch{setStatus(navigator.onLine?'error':'offline');}finally{busy=false;}}
 $('linkForm').onsubmit=async e=>{e.preventDefault();if(state.token||linking)return;linking=true;$('linkSubmit').disabled=true;try{const data=await post('/api/link',{code:$('code').value.trim()});state.token=data.token;save();$('linkDialog').close();render();await sync();}catch{$('linkStatus').textContent=t('linkError');}finally{linking=false;$('linkSubmit').disabled=false;}};
-window.addEventListener('online',()=>{sync();refreshContent();});window.addEventListener('offline',()=>setStatus('offline'));
-document.addEventListener('visibilitychange',()=>{pointer=null;updateWakeLock();if(document.visibilityState==='visible'){render();sync();}else sync();});
+window.addEventListener('online',()=>{scheduledSync();refreshContent();});window.addEventListener('offline',()=>setStatus('offline'));
+document.addEventListener('visibilitychange',()=>{pointer=null;updateWakeLock();if(document.visibilityState==='visible'){render();scheduledSync();}});
 window.addEventListener('storage',e=>{if(e.key===storageKey&&e.newValue){state={...state,...JSON.parse(e.newValue)};render();}});
 async function refreshContent(){if(!navigator.onLine)return;try{const r=await fetch('/api/content',{signal:AbortSignal.timeout(15000)});if(!r.ok)return;const data=await r.json();state.content=data.content;state.experience=data.experience??null;save();render();}catch{}}
-setInterval(()=>{render();sync();refreshContent();},30000);refreshContent();if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});render();sync();
+setInterval(()=>{render();scheduledSync();refreshContent();},30000);refreshContent();if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});render();scheduledSync();
 
 function finishWelcome(){state.onboarded=true;save();$('welcome').close();}
 $('welcomeSkip').onclick=finishWelcome;
 $('welcomeConnect').onclick=()=>{finishWelcome();$('linkDialog').showModal();};
 $('welcome').addEventListener('cancel',()=>{state.onboarded=true;save();});
-if(!state.onboarded&&!state.token&&!state.events.length)$('welcome').showModal();
+if(telegramReady&&!state.onboarded&&!state.token&&!state.events.length)$('welcome').showModal();
+
+function scheduledSync(){
+ if(!telegramReady||!state.token||!navigator.onLine||busy)return;
+ const now=new Date(),slot=new Date(now);let hour=[22,12,7].find(h=>now.getHours()>=h);
+ if(hour===undefined){slot.setDate(slot.getDate()-1);hour=22;}slot.setHours(hour,0,0,0);
+ if((state.autoSyncSlot||0)>=slot.getTime())return;state.autoSyncSlot=slot.getTime();save();sync();
+}
+async function telegramLogin(){
+ const initData=window.Telegram?.WebApp?.initData;if(!initData)return;
+ try{const data=await post('/api/auth/telegram',{initData});state.token=data.token;state.onboarded=true;save();telegramReady=true;if($('welcome').open)$('welcome').close();render();await sync();}
+ catch{setStatus('linkError');$('status').textContent=state.language==='ru'?'Вход Telegram не подтверждён. Откройте Mini App заново; при другом аккаунте используйте отдельный профиль браузера.':'Telegram login failed. Reopen the Mini App; use a separate browser profile for another account.';}
+}
+telegramLogin();

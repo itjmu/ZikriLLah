@@ -12,8 +12,23 @@ export function createStore(dir) {
   db.exec(`PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS profiles(user TEXT PRIMARY KEY, name TEXT NOT NULL, public INTEGER NOT NULL DEFAULT 0, settings TEXT NOT NULL DEFAULT '{}'); CREATE INDEX IF NOT EXISTS events_at ON events(at);`);
   db.exec(`CREATE TABLE IF NOT EXISTS custom_zikrs(user TEXT,id TEXT,value TEXT,PRIMARY KEY(user,id));`);
   db.exec("CREATE TABLE IF NOT EXISTS deleted_zikrs(user TEXT,id TEXT,PRIMARY KEY(user,id));");
+  db.exec('CREATE TABLE IF NOT EXISTS device_links(id TEXT PRIMARY KEY,secret_hash TEXT NOT NULL,user TEXT,expires INTEGER NOT NULL)');
   return {
     db,
+    token(user){const token=randomBytes(32).toString('hex');db.prepare('INSERT INTO tokens VALUES(?,?)').run(hash(token),String(user));return token;},
+    beginDevice(){
+      db.prepare('DELETE FROM device_links WHERE expires<?').run(Date.now());
+      if(db.prepare('SELECT COUNT(*) n FROM device_links').get().n>=1000)throw Error('Busy');
+      const id=randomBytes(12).toString('hex'),secret=randomBytes(32).toString('hex');
+      db.prepare('INSERT INTO device_links VALUES(?,?,NULL,?)').run(id,hash(secret),Date.now()+600000);return {id,secret};
+    },
+    approveDevice(id,user){return db.prepare('UPDATE device_links SET user=? WHERE id=? AND user IS NULL AND expires>?').run(String(user),id,Date.now()).changes===1;},
+    pollDevice(id,secret){
+      if(typeof secret!=='string'||!/^[a-f0-9]{64}$/.test(secret))return null;
+      const row=db.prepare('SELECT * FROM device_links WHERE id=? AND secret_hash=? AND expires>?').get(id,hash(secret),Date.now());
+      if(!row)return null;if(!row.user)return {pending:true};
+      const token=hash('device-token:'+secret);db.prepare('INSERT OR IGNORE INTO tokens VALUES(?,?)').run(hash(token),row.user);return {token};
+    },
     catalog(user){const row=db.prepare('SELECT settings FROM profiles WHERE user=?').get(String(user));const settings=row?JSON.parse(row.settings):{};return orderedCatalog([...builtinZikrs,...this.customZikrs(user)],settings.zikrOrder||[],this.deletedZikrs(user));},
     deletedZikrs(user){return db.prepare('SELECT id FROM deleted_zikrs WHERE user=?').all(String(user)).map(r=>r.id);},
     deleteZikrs(user,ids=[]){if(!Array.isArray(ids)||ids.length>200||ids.some(id=>typeof id!=='string'||!/^custom-[a-f0-9-]{36}$/.test(id)))throw Error('Invalid deleted dhikr');

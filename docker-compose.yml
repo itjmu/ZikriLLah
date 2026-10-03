@@ -1,0 +1,18 @@
+services:
+  zikrillah:
+    build: .
+    container_name: muhibullo_zikrillah
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: "3107"
+      DATA_DIR: /app/data
+      BOT_API_ENABLED: "1"
+    volumes:
+      - ./data:/app/data
+    mem_limit: 400m
+    cpus: 0.5
+    ports:
+      - "127.0.0.1:3107:3107"

@@ -14,6 +14,8 @@ export function createHandler(store,api,{publicUrl='',now=()=>new Date(),adminId
     const query=update.callback_query,m=query?.message||update.message,from=query?.from||m?.from;
     if(!m||m.chat?.type!=='private'||!from||String(m.chat.id)!==String(from.id))return;
     store.profile(from.id,from.first_name);
+    const connect=/^\/start(?:@[a-zA-Z0-9_]+)? connect_([a-f0-9]{24})$/.exec(m.text||'');
+    if(connect){const ok=store.approveDevice(connect[1],from.id);await api('sendMessage',{chat_id:m.chat.id,text:ok?'✓ Устройство подключено. Вернитесь в ZikriLLah — прогресс синхронизируется.':'Ссылка уже использована или истекла. Повторите подключение из приложения.'});return;}
     let zikrs=store.catalog(from.id);
     let page='home',forceClear=false,isTap=false;
     const send=body=>api('sendMessage',{chat_id:m.chat.id,...body});

@@ -1,0 +1,9 @@
+*
+!Dockerfile
+!package.json
+!bot/
+!bot/**
+!server/
+!server/**
+!web/
+!web/**
