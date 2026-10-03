@@ -21,6 +21,7 @@ public class MainActivity extends Activity {
     private boolean vibrationEnabled(){return store.enabled("vibrationEnabled",true);}
     private boolean silent(){return store.enabled("silent",false);}
     private void feedback(boolean complete){if(FeedbackPolicy.sound(soundEnabled(),silent(),stealth())&&clickTone!=null)clickTone.play(complete,store.value("clickSound","beads"));if(FeedbackPolicy.vibration(vibrationEnabled(),silent(),stealth(),complete))haptics.pulse(complete);}
+    private long hiddenCount=0;
     private LinearLayout clockFace;
     private ScrollView menuScroll;
     private TextView clockTime,clockDate,clockCount;
@@ -62,7 +63,7 @@ public class MainActivity extends Activity {
         // Physical input is consumed in dispatchTouchEvent. This listener is accessibility-only.
         tasbih.setOnClickListener(v->add());
         menuButton=button(stealth()?"↩":"☰",()->{if(stealth()){store.put("stealthMode","false");buildScreen();}else openMenu();});menuButton.setContentDescription(stealth()?(english()?"Exit discreet mode":"Выйти из скрытого режима"):t("Меню"));menuButton.setTextSize(28);FrameLayout.LayoutParams corner=new FrameLayout.LayoutParams(dp(64),dp(64),Gravity.TOP|Gravity.START);corner.setMargins(dp(18),dp(12),0,0);root.addView(menuButton,corner);
-        clockFace=column(24);clockFace.setGravity(Gravity.TOP|Gravity.START);clockTime=text("",88,Color.rgb(125,125,125));clockTime.setTypeface(Typeface.create("sans-serif-light",Typeface.NORMAL));clockTime.setMaxLines(1);clockTime.setAutoSizeTextTypeUniformWithConfiguration(58,88,2,android.util.TypedValue.COMPLEX_UNIT_SP);clockDate=text("",22,Color.rgb(112,112,112));clockCount=text("0",46,Color.rgb(138,138,138));clockCount.setTypeface(Typeface.create("sans-serif-light",Typeface.NORMAL));clockFace.addView(clockTime,new LinearLayout.LayoutParams(-1,dp(118)));clockFace.addView(clockDate);gap(clockFace,10);clockFace.addView(clockCount);clockFace.setVisibility(stealth()?View.VISIBLE:View.GONE);FrameLayout.LayoutParams clockPosition=new FrameLayout.LayoutParams(-1,-2,Gravity.TOP|Gravity.START);clockPosition.topMargin=dp(76);root.addView(clockFace,clockPosition);menuButton.bringToFront();clockFace.setOnClickListener(v->add());
+        clockFace=column(24);clockFace.setGravity(Gravity.TOP|Gravity.START);clockTime=text("",88,Color.rgb(230,230,230));clockTime.setTypeface(Typeface.create("sans-serif-light",Typeface.NORMAL));clockTime.setMaxLines(1);clockTime.setAutoSizeTextTypeUniformWithConfiguration(58,88,2,android.util.TypedValue.COMPLEX_UNIT_SP);clockDate=text("",22,Color.rgb(210,210,210));clockCount=text("0",46,Color.rgb(138,138,138));clockCount.setMaxLines(1);clockCount.setAutoSizeTextTypeUniformWithConfiguration(20,46,2,android.util.TypedValue.COMPLEX_UNIT_SP);clockCount.setTypeface(Typeface.create("sans-serif-light",Typeface.NORMAL));clockFace.addView(clockTime,new LinearLayout.LayoutParams(-1,dp(118)));clockFace.addView(clockDate);gap(clockFace,10);clockFace.addView(clockCount);clockFace.setVisibility(stealth()?View.VISIBLE:View.GONE);FrameLayout.LayoutParams clockPosition=new FrameLayout.LayoutParams(-1,-2,Gravity.TOP|Gravity.START);clockPosition.topMargin=dp(76);root.addView(clockFace,clockPosition);menuButton.bringToFront();clockFace.setOnClickListener(v->add());
         WindowManager.LayoutParams attributes=getWindow().getAttributes();attributes.screenBrightness=stealth()?0.08f:-1f;getWindow().setAttributes(attributes);
         if(stealth()){getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);menuButton.setTextColor(Color.rgb(200,200,200));menuButton.setBackground(surface(Color.rgb(24,24,24),14));}
         else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -82,9 +83,9 @@ public class MainActivity extends Activity {
     private int goal(){return Math.max(1,store.number("goal",33));}
     private String number(int n){return String.format(Locale.forLanguageTag("ru"),"%,d",n);}
     private void render(){if(tasbih==null)return;if(clockTime!=null&&stealth()){java.time.LocalDateTime now=java.time.LocalDateTime.now();Locale locale=Locale.forLanguageTag(english()?"en":"ru");clockTime.setText(now.format(DateTimeFormatter.ofPattern("HH:mm",locale)));clockDate.setText(now.format(DateTimeFormatter.ofPattern("EEEE, d MMMM",locale)));clockFace.setTranslationX(dp((now.getMinute()%3-1)*4));clockFace.setTranslationY(dp((now.getMinute()/3%3-1)*4));}int selected=selected();int count=store.countFor(selected);int current=count==0?0:(count-1)%goal()+1;
-        arabicText.setText(z(selected,"arabic"));nameText.setText(z(selected,"name"));meaningText.setText(z(selected,"meaning"));int visibility=store.enabled("showText",true)?View.VISIBLE:View.INVISIBLE;arabicText.setVisibility(visibility);nameText.setVisibility(visibility);meaningText.setVisibility(visibility);tasbih.progress(current,goal());if(clockCount!=null)clockCount.setText(String.valueOf(current));if(publicationView!=null)publicationView.bind(store,english());
+        arabicText.setText(z(selected,"arabic"));nameText.setText(z(selected,"name"));meaningText.setText(z(selected,"meaning"));int visibility=store.enabled("showText",true)?View.VISIBLE:View.INVISIBLE;arabicText.setVisibility(visibility);nameText.setVisibility(visibility);meaningText.setVisibility(visibility);tasbih.progress(current,goal());if(clockCount!=null)clockCount.setText(hiddenCount+"/"+(hiddenCount==0?0:(hiddenCount-1)%goal()+1)+"/"+(hiddenCount/goal()));if(publicationView!=null)publicationView.bind(store,english());
     }
-    private void add(){if(!tapGate.accept(SystemClock.elapsedRealtime(),store.number("tapInterval",200)))return;try{boolean complete=store.add(selected(),goal(),store.enabled("autoNext",false));feedback(complete);
+    private void add(){if(!tapGate.accept(SystemClock.elapsedRealtime(),store.number("tapInterval",200)))return;try{boolean complete=store.add(selected(),goal(),store.enabled("autoNext",false));if(stealth())hiddenCount++;feedback(stealth()?hiddenCount%goal()==0:complete);
         render();
     }catch(Exception e){toast("Нажатие не сохранено. Проверьте свободное место.");}}
     private void chooseGoal(){new AlertDialog.Builder(this).setTitle(t("Цель круга")).setItems(new String[]{"33","99","100","1000",t("Другое количество")},(dialog,index)->{if(index==4){customGoal();return;}store.put("goal",String.valueOf(new int[]{33,99,100,1000}[index]));render();}).show();}
@@ -120,7 +121,7 @@ public class MainActivity extends Activity {
         language.setContentDescription(t("Язык"));
         Button theme=button(icons[current],()->{store.put("theme",nextTheme);buildScreen();populateMenu(dialog,"home");});
         theme.setContentDescription(t("Тема"));
-        Button hidden=button("🕶",()->{store.put("stealthMode",String.valueOf(!stealth()));dialog.dismiss();buildScreen();});
+        Button hidden=button("🕶",()->{if(!stealth())hiddenCount=0;store.put("stealthMode",String.valueOf(!stealth()));dialog.dismiss();buildScreen();});
         hidden.setContentDescription(t("Скрытый режим · часы"));
         Button sound=button(feedbackIcon(),()->{cycleFeedback();populateMenu(dialog,"home");});sound.setContentDescription(feedbackLabel());
         Button[] buttons={hidden,language,theme,sound};LinearLayout line=row();
@@ -162,7 +163,7 @@ public class MainActivity extends Activity {
             toggle(menu,english()?"📖 Dhikr text":"📖 Текст зикра","showText",true,this::render);
             toggle(menu,english()?"↪ Next dhikr after round":"↪ Следующий зикр после круга","autoNext",false,null);
             section(menu,english()?"🕶 Discreet mode":"🕶 Скрытый режим");
-            menu.addView(button(t("Скрытый режим · часы"),()->{store.put("stealthMode",String.valueOf(!stealth()));dialog.dismiss();buildScreen();}));
+            menu.addView(button(t("Скрытый режим · часы"),()->{if(!stealth())hiddenCount=0;store.put("stealthMode",String.valueOf(!stealth()));dialog.dismiss();buildScreen();}));
             menu.addView(text(english()?"No tap sounds or vibrations. Only round-end vibration. Silent mode disables that too.":"Без звука и вибрации нажатий. Вибрация только в конце круга. «Полная тишина» отключает и её.",12,muted));
             section(menu,english()?"🔔 Notifications":"🔔 Уведомления");
             toggle(menu,english()?"Daily reminder":"Ежедневное напоминание","dailyReminder",true,()->{Reminders.schedule(this);if(store.enabled("dailyReminder",true))requestNotifications();});

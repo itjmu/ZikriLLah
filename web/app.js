@@ -18,6 +18,7 @@ if(!zikrs.some(z=>z.id===state.selected))state.selected=zikrs[0].id;
 state.soundEnabled??=state.feedbackMode===0;state.vibrationEnabled??=state.feedbackMode<2;state.silent??=state.feedbackMode===2;
 if(!translations[state.language])state.language='ru';
 if(state.theme==='stealth'){state.stealth=true;state.theme=state.previousTheme&&state.previousTheme!=='stealth'?state.previousTheme:'emerald';}
+let hiddenCount=0;
 let syncPromise=null,updatesSignature='';
 let telegramReady=!window.Telegram?.WebApp?.initData;
 let busy=false,linking=false,timer,page='home',statusKey='local';const tapGate=new TapGate();
@@ -42,7 +43,7 @@ function render(){
   $('menu').setAttribute('aria-label',t('menu'));$('menuBack').setAttribute('aria-label',t('back'));$('tap').setAttribute('aria-label',t('add'));document.querySelectorAll('[data-close]').forEach(b=>b.setAttribute('aria-label',t('close')));
   document.querySelector('meta[name="theme-color"]').content=getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
   if(page==='stats')for(const key of ['today','total','rounds','yesterday','month'])$(key).textContent=stats[key].toLocaleString(state.language);
-  $('count').textContent=stats.current;$('stealthCount').textContent=stats.current;$('count').classList.toggle('long-count',stats.current>999);$('goalLabel').textContent=state.goal;if(document.activeElement!==$('goal'))$('goal').value=state.goal;$('interval').value=state.tapInterval;
+  $('count').textContent=stats.current;$('stealthCount').textContent=hiddenCount+'/'+(hiddenCount===0?0:(hiddenCount-1)%state.goal+1)+'/'+Math.floor(hiddenCount/state.goal);$('count').classList.toggle('long-count',stats.current>999);$('goalLabel').textContent=state.goal;if(document.activeElement!==$('goal'))$('goal').value=state.goal;$('interval').value=state.tapInterval;
   $('arabic').textContent=z.arabic;$('zikrName').textContent=name;$('meaning').textContent=meaning;$('zikrText').classList.toggle('text-hidden',!state.showText);
   $('beadProgress').style.maskImage=`conic-gradient(from 90deg,#000 ${stats.current/state.goal*360}deg,transparent 0)`;
   $('textToggle').checked=state.showText;$('autoNext').checked=state.autoNext;
@@ -96,10 +97,10 @@ $('soundChoice').onchange=e=>{state.clickSound=e.target.value;save();clickSound(
 
 $('cycleLanguage').onclick=()=>{state.language=state.language==='ru'?'en':'ru';save();render();};
 $('cycleTheme').onclick=()=>{const themes=['emerald','light','dark','black',...(state.experience?.themes||[]).map(t=>t.id)];state.theme=themes[(themes.indexOf(state.theme)+1)%themes.length];save();render();};
-$('quickStealth').onclick=()=>{state.stealth=!state.stealth;save();$('drawer').close();render();};
+$('quickStealth').onclick=()=>{if(!state.stealth)hiddenCount=0;state.stealth=!state.stealth;save();$('drawer').close();render();};
 $('account').onclick=()=>{if(state.token&&!state.authExpired){sync();return;}$('drawer').close();beginDeviceLink();};
 $('testVibration').onclick=()=>{$('hapticStatus').textContent=t(haptic(true)==='unavailable'?'hapticMissing':'hapticSent');};
-$('stealthToggle').onclick=()=>{state.stealth=!state.stealth;save();$('drawer').close();render();};
+$('stealthToggle').onclick=()=>{if(!state.stealth)hiddenCount=0;state.stealth=!state.stealth;save();$('drawer').close();render();};
 function updateClock(){if(!state.stealth)return;const date=new Date();$('clockTime').textContent=date.toLocaleTimeString(state.language,{hour:'2-digit',minute:'2-digit',hour12:false});$('clockDate').textContent=date.toLocaleDateString(state.language,{weekday:'long',day:'numeric',month:'long'});$('stealthClock').style.transform='translate('+((date.getMinutes()%3-1)*4)+'px,'+((Math.floor(date.getMinutes()/3)%3-1)*4)+'px)';}
 let wakeLock=null,wakePending=false;
 async function updateWakeLock(){const needed=state.stealth&&document.visibilityState==='visible';if(!needed){if(wakeLock){const lock=wakeLock;wakeLock=null;await lock.release().catch(()=>{});}return;}if(wakeLock||wakePending||!navigator.wakeLock)return;wakePending=true;try{const lock=await navigator.wakeLock.request('screen');if(!state.stealth||document.visibilityState!=='visible'){await lock.release();return;}wakeLock=lock;lock.addEventListener('release',()=>{if(wakeLock===lock)wakeLock=null;});}catch{}finally{wakePending=false;}}
@@ -110,7 +111,8 @@ function addZikr(){
   state.events.push(event);state.pending.push(event);const complete=selectedCount()%state.goal===0;
   if(complete&&state.autoNext)state.selected=nextInCycle(zikrs,state.cycleZikrs,state.selected);
   try{save();}catch{state.events.pop();state.pending.pop();countedEvents=null;state.selected=previousSelected;setStatus('storage');alert(t('storage'));return;}
-  const feedback=feedbackPolicy(state,complete);if(feedback.sound)clickSound();if(feedback.vibrate)haptic(complete);setStatus(state.token?'pending':'local');render();
+  if(state.stealth)hiddenCount++;const feedbackComplete=state.stealth?hiddenCount%state.goal===0:complete;
+  const feedback=feedbackPolicy(state,feedbackComplete);if(feedback.sound)clickSound();if(feedback.vibrate)haptic(feedbackComplete);setStatus(state.token?'pending':'local');render();
 
 }
 // Physical taps use only pointerup; the browser's subsequent click never counts again.

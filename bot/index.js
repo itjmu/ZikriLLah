@@ -19,7 +19,7 @@ const handle=createHandler(store,api,{publicUrl:process.env.PUBLIC_URL||'',admin
 const broadcastWorker=createBroadcasts(store,api,{adminIds:(process.env.ADMIN_IDS||'').split(',').map(s=>s.trim())});broadcastWorker.recover();setInterval(()=>broadcastWorker.tick().catch(()=>console.error('Рассылка: ошибка очереди, повтор проверки позже.')),1000);
 const reminderWorker=createReminders(store,api);setInterval(()=>reminderWorker.tick().catch(()=>console.error("Daily reminder queue failed")),1000);
 let offset=Number(store.db.prepare('SELECT value FROM meta WHERE key=?').get('bot_offset')?.value||0);
-console.log('ZikriLLah bot v0.15 started');
+console.log('ZikriLLah bot v0.16 started');
 while(true){
   try{
     for(const update of await api('getUpdates',{offset,timeout:25,allowed_updates:['message','callback_query']})){

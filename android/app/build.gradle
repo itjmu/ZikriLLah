@@ -2,7 +2,7 @@ plugins { id 'com.android.application' }
 android {
     namespace 'app.zikrillah'
     compileSdk 35
-    defaultConfig { applicationId 'app.zikrillah'; minSdk 26; targetSdk 35; versionCode 15; versionName '0.15.0' }
+    defaultConfig { applicationId 'app.zikrillah'; minSdk 26; targetSdk 35; versionCode 16; versionName '0.16.0' }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
 tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
