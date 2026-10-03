@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-const markup=rows=>({inline_keyboard:rows.map(row=>row.map(([text,callback_data])=>({text,callback_data})))});
+const markup=rows=>({inline_keyboard:rows.map(row=>row.map(([text,callback_data])=>({text,callback_data,style:/remove|stop:|cancel/.test(callback_data)?'danger':/publish|send:/.test(callback_data)?'success':'primary'})))});
 export function createBroadcasts(store,api,{adminIds=[],now=()=>Date.now()}={}){
  const admins=new Set(adminIds.map(String)),db=store.db;
  db.exec("CREATE TABLE IF NOT EXISTS broadcasts(id TEXT PRIMARY KEY,admin TEXT,source TEXT,messages TEXT,status TEXT,next_at INTEGER DEFAULT 0);CREATE TABLE IF NOT EXISTS broadcast_deliveries(job TEXT,user TEXT,status TEXT DEFAULT 'pending',PRIMARY KEY(job,user));");
@@ -22,15 +22,17 @@ export function createBroadcasts(store,api,{adminIds=[],now=()=>Date.now()}={}){
   }
   if(action==='admin:b:new'){
    set(from.id,{adminAwait:false,adminDraft:null,broadcastDraft:{id:randomUUID(),ids:[],preview:null}});
-   await send({text:'Отправьте или перешлите одно сообщение, альбом либо несколько сообщений (до 100). Оформление текста и подписи сохранятся. Затем нажмите «Предпросмотр». Рассылка начнётся только после подтверждения.',reply_markup:markup([[['Предпросмотр','admin:b:preview']],[['Отмена','admin:b:cancel']]])});return true;
+   await send({text:'Отправьте или перешлите одно сообщение, альбом либо несколько сообщений (до 100). Оформление текста и подписи сохранятся. Затем нажмите «Предпросмотр». Рассылка начнётся только после подтверждения.',reply_markup:markup([[['Предпросмотр','admin:b:preview']],[['Убрать последнее','admin:b:undo']],[['Отмена','admin:b:cancel']]])});return true;
   }
   if(action==='admin:b:cancel'){set(from.id,{broadcastDraft:null});await send({text:'Черновик рассылки отменён.'});return true;}
-  if(action.startsWith('admin:b:status:')||action.startsWith('admin:b:stop:')){
+  if(action.startsWith('admin:b:status:')||action.startsWith('admin:b:stop:')||action.startsWith('admin:b:pause:')||action.startsWith('admin:b:resume:')){
    const id=action.split(':')[3],job=db.prepare('SELECT * FROM broadcasts WHERE id=? AND admin=?').get(id,String(from.id));
    if(!job){await send({text:'Рассылка не найдена.'});return true;}
-   if(action.startsWith('admin:b:stop:'))db.prepare("UPDATE broadcasts SET status='cancelled' WHERE id=? AND status='running'").run(id);
+   if(action.startsWith('admin:b:pause:'))db.prepare("UPDATE broadcasts SET status='paused' WHERE id=? AND status='running'").run(id);
+   if(action.startsWith('admin:b:resume:'))db.prepare("UPDATE broadcasts SET status='running' WHERE id=? AND status='paused'").run(id);
+   if(action.startsWith('admin:b:stop:'))db.prepare("UPDATE broadcasts SET status='cancelled' WHERE id=? AND status IN ('running','paused')").run(id);
    const status=db.prepare('SELECT status FROM broadcasts WHERE id=?').get(id).status;
-   await send({text:'Рассылка: '+({running:'выполняется',done:'завершена',cancelled:'остановлена'}[status]||status)+'\n'+summary(id),reply_markup:markup([[['Обновить','admin:b:status:'+id]],...(status==='running'?[[['Остановить','admin:b:stop:'+id]]]:[])])});return true;
+   await send({text:'Рассылка: '+({paused:'на паузе',running:'выполняется',done:'завершена',cancelled:'остановлена'}[status]||status)+'\n'+summary(id),reply_markup:markup([[['Обновить','admin:b:status:'+id]],...(status==='paused'?[[['Продолжить','admin:b:resume:'+id],['Остановить','admin:b:stop:'+id]]]:[]),...(status==='running'?[[['Пауза','admin:b:pause:'+id],['Остановить','admin:b:stop:'+id]]]:[]),[['← Рассылки','admin:b:list']]])});return true;
   }
   const draft=s.broadcastDraft;
   if(action.startsWith('admin:b:send:')){
@@ -43,6 +45,7 @@ export function createBroadcasts(store,api,{adminIds=[],now=()=>Date.now()}={}){
    await send({text:'Рассылка поставлена в очередь.\n'+summary(draft.id),reply_markup:markup([[['Статус','admin:b:status:'+draft.id],['Остановить','admin:b:stop:'+draft.id]]])});return true;
   }
   if(!draft){await send({text:'Сначала создайте рассылку в /admin.'});return true;}
+  if(action==='admin:b:undo'){set(from.id,{broadcastDraft:{...draft,ids:draft.ids.slice(0,-1),summaries:(draft.summaries||[]).slice(0,-1),preview:null}});await send({text:'Последнее сообщение удалено. Осталось: '+Math.max(0,draft.ids.length-1),reply_markup:markup([[['Предпросмотр','admin:b:preview']],[['Убрать последнее','admin:b:undo']],[['Отмена','admin:b:cancel']]])});return true;}
   if(action==='admin:b:preview'){
    if(!draft.ids.length){await send({text:'Сначала отправьте содержимое рассылки.'});return true;}
    try{
@@ -60,7 +63,7 @@ export function createBroadcasts(store,api,{adminIds=[],now=()=>Date.now()}={}){
    if(draft.ids.length>=100){await send({text:'Лимит черновика — 100 сообщений.'});return true;}
    set(from.id,{broadcastDraft:{...draft,ids:[...draft.ids,m.message_id],summaries:[...(draft.summaries||[]),(m.text||m.caption||"Медиа / сообщение — открыть в Telegram").slice(0,2000)],preview:null}});
    // Album parts arrive separately; the explicit Preview button finalizes the collection.
-   if(!m.media_group_id)await send({text:'Добавлено в черновик: '+(draft.ids.length+1),reply_markup:markup([[['Предпросмотр','admin:b:preview']],[['Отмена','admin:b:cancel']]])});
+   if(!m.media_group_id)await send({text:'Добавлено в черновик: '+(draft.ids.length+1),reply_markup:markup([[['Предпросмотр','admin:b:preview']],[['Убрать последнее','admin:b:undo']],[['Отмена','admin:b:cancel']]])});
    return true;
   }
   return true;

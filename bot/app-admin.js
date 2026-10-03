@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {readExperience,saveExperience,themeFromText,builtInThemes,validBackground} from '../server/experience.js';
-const keyboard=rows=>({inline_keyboard:rows.map(row=>row.map(([text,callback_data])=>({text,callback_data})))});
+const keyboard=rows=>({inline_keyboard:rows.map(row=>row.map(([text,callback_data])=>({text,callback_data,style:/remove|stop:|cancel/.test(callback_data)?'danger':/publish|send:/.test(callback_data)?'success':'primary'})))});
 export function createAppAdmin(store,api,{adminIds=[],saveMedia,now=()=>Date.now()}={}){
  const admins=new Set(adminIds.map(String));
  return async update=>{
@@ -13,7 +13,10 @@ export function createAppAdmin(store,api,{adminIds=[],saveMedia,now=()=>Date.now
   if(q)await api('answerCallbackQuery',{callback_query_id:q.id}).catch(()=>{});
   if(!admins.has(String(from.id))){await send({text:'Нет доступа.'});return true;}
   if(action.startsWith('admin:app:'))store.configure(from.id,{broadcastDraft:null,adminAwait:false,adminDraft:null});
-  const set=patch=>store.configure(from.id,patch),value=readExperience(store),home=()=>send({text:'Управление APK и вебом. Изменения получат подключённые устройства при следующем обмене. Уведомления APK приходят при фоновой проверке, не мгновенно.',reply_markup:keyboard([[['🔔 Уведомление APK','admin:app:notice']],[['🎨 Темы','admin:app:themes']],[['♫ Добавить звук WAV','admin:app:sound']],[['📿 Зикр для всех','admin:app:zikr']],[['Фото главного экрана','admin:app:bg-main']],[['Фото бокового меню','admin:app:bg-menu']],[['Убрать фон главного','admin:app:clear-main'],['Убрать фон меню','admin:app:clear-menu']],[['Отменить временную тему','admin:app:reset']],[['← Админ-панель','admin:home']]])});
+  const set=patch=>store.configure(from.id,patch),value=readExperience(store),home=()=>send({text:'Управление APK и вебом. Изменения получат подключённые устройства при следующем обмене. Уведомления APK приходят при фоновой проверке, не мгновенно.',reply_markup:keyboard([[['🔔 Создать уведомление','admin:app:notice']],[['📋 Управление уведомлениями','admin:app:notices']],[['🎨 Темы','admin:app:themes']],[['♫ Добавить звук WAV','admin:app:sound']],[['📿 Зикр для всех','admin:app:zikr']],[['Фото главного экрана','admin:app:bg-main']],[['Фото бокового меню','admin:app:bg-menu']],[['Убрать фон главного','admin:app:clear-main'],['Убрать фон меню','admin:app:clear-menu']],[['Отменить временную тему','admin:app:reset']],[['← Админ-панель','admin:home']]])});
+  if(action==='admin:app:notices'){await send({text:'Одноразовые уведомления. Сохраняются для офлайн-устройств. Удаление прекращает будущую доставку, но не отзывает уже показанное.',reply_markup:keyboard([...value.notifications.slice(-20).map(n=>[[n.text.slice(0,35),'admin:app:notice-view:'+n.id]]),[['← Назад','admin:app:home']]])});return true;}
+  if(action.startsWith('admin:app:notice-view:')){const n=value.notifications.find(n=>n.id===action.split(':')[3]);if(n)await send({text:n.text,reply_markup:keyboard([[['Удалить уведомление','admin:app:notice-delete:'+n.id]],[['← Назад','admin:app:notices']]])});return true;}
+  if(action.startsWith('admin:app:notice-delete:')){value.notifications=value.notifications.filter(n=>n.id!==action.split(':')[3]);saveExperience(store,value);await home();return true;}
   if(action==='admin:app:home'||action==='admin:app:cancel'){set({appAwait:null,appDraft:null});await home();return true;}
   if(action==='admin:app:sound'||action==='admin:app:zikr'){const kind=action.split(':')[2];set({appAwait:kind,appDraft:null,adminAwait:false,broadcastDraft:null});await send({text:kind==='sound'?'Пришлите короткий звук WAV (до 1 МБ), как документ. Подпись — название до 40 символов. Рекомендуется PCM WAV до 2 секунд.':'Пришлите: название | арабский текст | перевод. Зикр появится у всех после синхронизации.',reply_markup:keyboard([[['Отмена','admin:app:cancel']]])});return true;}
   if(action==='admin:app:notice'){set({appAwait:'notice',appDraft:null,adminAwait:false,broadcastDraft:null});await send({text:'Отправьте текст уведомления APK, до 1000 символов. Потом покажу подтверждение.',reply_markup:keyboard([[['Отмена','admin:app:cancel']]])});return true;}
@@ -36,7 +39,7 @@ export function createAppAdmin(store,api,{adminIds=[],saveMedia,now=()=>Date.now
    const draft=settings.appDraft;if(!draft||draft.id!==action.split(':')[3]){await send({text:'Предпросмотр устарел.'});return true;}
    if(draft.kind==='sound'){if(value.sounds.length>=20){await send({text:'Лимит 20 звуков.'});return true;}value.sounds.push(draft.sound);}
    if(draft.kind==='zikr'){if(value.zikrs.length>=200){await send({text:'Лимит 200 общих зикров.'});return true;}value.zikrs.push(draft.zikr);}
-   if(draft.kind==='notice')value.notifications=[...value.notifications.filter(n=>n.expiresAt>now()),{id:draft.id,text:draft.text,at:now(),expiresAt:now()+86400000}].slice(-20);
+   if(draft.kind==='notice')value.notifications=[...value.notifications.filter(n=>!n.expiresAt||n.expiresAt>now()),{id:draft.id,text:draft.text,at:now(),expiresAt:0}];
    if(draft.kind==='theme'){if(value.themes.length>=20){await send({text:'Достигнут лимит 20 тем.'});return true;}value.themes.push(draft.theme);}
    if(['main','menu'].includes(draft.kind)&&validBackground(draft.media))value.backgrounds[draft.kind]=draft.media;
    saveExperience(store,value);set({appAwait:null,appDraft:null});await send({text:'Сохранено. Подключённые приложения получат изменение при следующей проверке.'});return true;

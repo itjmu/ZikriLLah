@@ -1,3 +1,4 @@
+import {nextReminder} from './reminders.js';
 import {createAppAdmin} from './app-admin.js';
 import {createBroadcasts} from './broadcasts.js';
 import {cycleIds} from '../web/model.js';
@@ -16,6 +17,7 @@ export function createHandler(store,api,{publicUrl='',now=()=>new Date(),adminId
     store.profile(from.id,from.first_name);
     const connect=/^\/start(?:@[a-zA-Z0-9_]+)? connect_([a-f0-9]{24})$/.exec(m.text||'');
     if(connect){const ok=store.approveDevice(connect[1],from.id);await api('sendMessage',{chat_id:m.chat.id,text:ok?'✓ Устройство подключено. Вернитесь в ZikriLLah — прогресс синхронизируется.':'Ссылка уже использована или истекла. Повторите подключение из приложения.'});return;}
+    const oldOffset=store.profile(from.id).settings.utcOffset;
     let zikrs=store.catalog(from.id);
     let page='home',forceClear=false,isTap=false;
     const send=body=>api('sendMessage',{chat_id:m.chat.id,...body});
@@ -48,7 +50,8 @@ export function createHandler(store,api,{publicUrl='',now=()=>new Date(),adminId
       else if(['auto','text','participate'].includes(action)&&['0','1'].includes(value)){
         if(action==='participate')store.participation(from.id,value==='1');else store.configure(from.id,{[action==='auto'?'autoNext':'showText']:value==='1'});page=action==='participate'?'privacy':'settings';
       }else if(/^choose:\d{1,3}$/.test(data))page=data;
-      else if(['home','tasbih','choose','goals','daily','timezone','settings','stats','help','privacy','link','rank:day','rank:week','rank:all'].includes(data))page=data;
+      else if(action==='remind'&&['on','off','420','720','1320'].includes(value)){store.configure(from.id,value==='on'||value==='off'?{botReminder:value==='on'}:{reminderMinute:Number(value),botReminder:true});const rs=store.profile(from.id).settings;store.db.exec('CREATE TABLE IF NOT EXISTS daily_reminders(user TEXT PRIMARY KEY,due INTEGER NOT NULL)');store.db.prepare('INSERT OR REPLACE INTO daily_reminders VALUES(?,?)').run(String(from.id),nextReminder(now().getTime(),rs.utcOffset,rs.reminderMinute??420));page='reminder';}
+      else if(['reminder','home','tasbih','choose','goals','daily','timezone','settings','stats','help','privacy','link','rank:day','rank:week','rank:all'].includes(data))page=data;
       else page='help';
     }else{
       if(!m.text)return;
@@ -80,6 +83,7 @@ export function createHandler(store,api,{publicUrl='',now=()=>new Date(),adminId
       if(['/start','/menu','/stop','/exit'].includes(command))forceClear=true;
     }
     const settings=store.profile(from.id).settings;
+    if(settings.utcOffset!==oldOffset){store.db.exec('CREATE TABLE IF NOT EXISTS daily_reminders(user TEXT PRIMARY KEY,due INTEGER NOT NULL)');store.db.prepare('INSERT OR REPLACE INTO daily_reminders VALUES(?,?)').run(String(from.id),nextReminder(now().getTime(),settings.utcOffset,settings.reminderMinute??420));}
     if(page==='tasbih'){
       if(!settings.tasbihActive||settings.keyboardZikr!==settings.selected||!settings.keyboardMessage){
         const oldKeyboard=settings.keyboardMessage;

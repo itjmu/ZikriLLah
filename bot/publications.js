@@ -1,6 +1,6 @@
 import {publicationButton} from '../web/links.js';
 import {randomUUID} from 'node:crypto';
-const buttons=rows=>({inline_keyboard:rows.map(row=>row.map(([text,callback_data])=>({text,callback_data})))});
+const buttons=rows=>({inline_keyboard:rows.map(row=>row.map(([text,callback_data])=>({text,callback_data,style:/remove|stop:|cancel/.test(callback_data)?'danger':/publish|send:/.test(callback_data)?'success':'primary'})))});
 export const publicContent=post=>post?{id:post.id,text:post.text,kind:post.kind,media:post.media||'',publishedAt:post.publishedAt,button:publicationButton(post.button)}:null;
 export async function sendPublication(api,chat,post,extra={}){
   if(!post)return api('sendMessage',{chat_id:chat,text:'Пока нет новостей и объявлений.',...extra});
@@ -71,6 +71,8 @@ export function createPublications(store,api,{adminIds=[],saveMedia}={}){
       const draft={id:randomUUID(),text,kind,media,fileId:attachment?.file_id||''};store.configure(from.id,{adminDraft:draft,adminAwait:false});
       await preview(draft);return true;
     }
+    if(action==='admin:overview'){const users=store.db.prepare('SELECT COUNT(*) n FROM profiles').get().n;const events=store.db.prepare('SELECT COUNT(*) n FROM events').get().n;await send({text:'📊 Обзор проекта\nПользователей: '+users+'\nЗикров: '+events,reply_markup:buttons([[['← Админ-панель','admin:home']]])});return true;}
+    if(action==='admin:home'||command==='/admin'){store.configure(from.id,{adminAwait:false,adminDraft:null});await send({text:'🛠 Админ-панель\nВыберите раздел',reply_markup:buttons([[['📊 Обзор','admin:overview']],[['📣 Рассылки в Telegram','admin:b:list']],[['📰 Публикация в боковом меню','admin:posts']],[['🎨 APK / веб: уведомления и оформление','admin:app:home']],[['← Главное меню','home']]])});return true;}
     store.configure(from.id,{adminAwait:false,adminDraft:null});
     await send({text:'Админ-панель · Новости и объявления\nОдна общая карточка для веба, APK и раздела новостей бота. Новая публикация заменяет предыдущую.',reply_markup:buttons([[['📱 APK: уведомления и оформление','admin:app:home']],[['📣 Рассылка','admin:b:list']],[['＋ Создать публикацию','admin:new']],[['Изменить текущую','admin:edit']],[['Посмотреть текущую','news'],['Убрать публикацию','admin:remove']],[['← Меню','home']]])});return true;
   };

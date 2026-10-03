@@ -1,3 +1,4 @@
+import {createReminders} from './reminders.js';
 import {createAppServer} from '../server/index.js';
 import {createBroadcasts} from './broadcasts.js';
 import {createStore} from '../server/store.js';
@@ -16,8 +17,9 @@ async function api(method,body){
 }
 const handle=createHandler(store,api,{publicUrl:process.env.PUBLIC_URL||'',adminIds:(process.env.ADMIN_IDS||'').split(',').map(s=>s.trim()).filter(s=>/^\d+$/.test(s)),saveMedia:mediaSaver(api,token,process.env.DATA_DIR||'./data')});
 const broadcastWorker=createBroadcasts(store,api,{adminIds:(process.env.ADMIN_IDS||'').split(',').map(s=>s.trim())});broadcastWorker.recover();setInterval(()=>broadcastWorker.tick().catch(()=>console.error('Рассылка: ошибка очереди, повтор проверки позже.')),1000);
+const reminderWorker=createReminders(store,api);setInterval(()=>reminderWorker.tick().catch(()=>console.error("Daily reminder queue failed")),1000);
 let offset=Number(store.db.prepare('SELECT value FROM meta WHERE key=?').get('bot_offset')?.value||0);
-console.log('ZikriLLah bot v0.14 started');
+console.log('ZikriLLah bot v0.15 started');
 while(true){
   try{
     for(const update of await api('getUpdates',{offset,timeout:25,allowed_updates:['message','callback_query']})){

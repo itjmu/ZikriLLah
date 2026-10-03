@@ -16,5 +16,5 @@ export function readExperience(store){
 }
 export function saveExperience(store,value){store.db.prepare('INSERT OR REPLACE INTO meta VALUES(?,?)').run('app_experience',JSON.stringify(value));}
 export function publicExperience(store,now=Date.now()){
- const value=readExperience(store);return {...value,active:value.active&&value.active.expiresAt>now?value.active:null,notifications:value.notifications.filter(n=>n.expiresAt>now).slice(-20)};
+ const value=readExperience(store);return {...value,active:value.active&&value.active.expiresAt>now?value.active:null,notifications:value.notifications.filter(n=>!n.expiresAt||n.expiresAt>now)};
 }

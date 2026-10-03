@@ -9,13 +9,13 @@ import {publicExperience,themeFromText,validBackground} from '../server/experien
 import {effectiveTheme,backgroundPath} from '../web/experience.js';
 const q=(data,id=7)=>({callback_query:{id:'q',data,from:{id},message:{chat:{id,type:'private'}}}});
 const m=(text,id=7,extra={})=>({message:{text,...extra,from:{id},chat:{id,type:'private'}}});
-test('Application admin requires authorization and current confirmation; notices expire',async()=>{
+test('Application admin requires authorization and current confirmation; notices remain available to offline devices',async()=>{
  const dir=mkdtempSync(join(tmpdir(),'zikr-app-')),store=createStore(dir);let time=1000;const calls=[];const handler=createAppAdmin(store,async(method,body)=>{calls.push({method,body});return{};},{adminIds:['7'],now:()=>time});
  try{await handler(q('admin:app:notice',8));await handler(m('unauthorized',8));assert.equal(publicExperience(store).notifications.length,0);
   await handler(q('admin:app:notice'));await handler(m('News'));assert.equal(publicExperience(store,time).notifications.length,0);
   const draft=store.profile(7).settings.appDraft;await handler(q('admin:app:publish:stale'));assert.equal(publicExperience(store,time).notifications.length,0);
   await handler(q('admin:app:publish:'+draft.id));await handler(q('admin:app:publish:'+draft.id));assert.equal(publicExperience(store,time).notifications.length,1);
-  time+=86400001;assert.equal(publicExperience(store,time).notifications.length,0);
+  time+=86400001;assert.equal(publicExperience(store,time).notifications.length,1);
  }finally{store.db.close();rmSync(dir,{recursive:true,force:true});}
 });
 test('Custom themes validate contrast, can be scheduled temporarily, and restore personal preferences',async()=>{
