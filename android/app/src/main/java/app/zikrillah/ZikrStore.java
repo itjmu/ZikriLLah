@@ -26,6 +26,7 @@ public final class ZikrStore extends SQLiteOpenHelper {
     public synchronized JSONArray catalog(){if(catalogCache!=null)return catalogCache;
         Map<String,JSONObject> available=new LinkedHashMap<>();List<String> deleted=ids("deletedZikrs");
         for(int i=0;i<builtin.length();i++){JSONObject z=builtin.optJSONObject(i);available.put(z.optString("id"),z);}
+        JSONArray shared=Experience.data(this).optJSONArray("zikrs");if(shared!=null)for(int i=0;i<shared.length();i++){JSONObject z=shared.optJSONObject(i);if(z!=null)available.put(z.optString("id"),z);}
         JSONArray custom=customZikrs();for(int i=0;i<custom.length();i++){JSONObject z=custom.optJSONObject(i);if(!deleted.contains(z.optString("id")))available.put(z.optString("id"),z);}
         JSONArray list=new JSONArray();for(String id:ids("zikrOrder")){JSONObject z=available.remove(id);if(z!=null)list.put(z);}for(JSONObject z:available.values())list.put(z);catalogCache=list;return list;
     }
@@ -76,10 +77,10 @@ public final class ZikrStore extends SQLiteOpenHelper {
     public synchronized String value(String key,String fallback){SQLiteDatabase db=getReadableDatabase();if(!db.inTransaction()&&settingsCache.containsKey(key))return settingsCache.get(key);try(Cursor c=db.rawQuery("SELECT value FROM settings WHERE key=?",new String[]{key})){if(!c.moveToFirst())return fallback;String result=c.getString(0);if(!db.inTransaction())settingsCache.put(key,result);return result;}}
     public synchronized int number(String key,int fallback){try{return Integer.parseInt(value(key,String.valueOf(fallback)));}catch(NumberFormatException e){return fallback;}}
     public synchronized boolean enabled(String key,boolean fallback){return Boolean.parseBoolean(value(key,String.valueOf(fallback)));}
-    public synchronized void put(String key,String value){settingsCache.remove(key);if(key.equals("customZikrs")||key.equals("zikrOrder")||key.equals("deletedZikrs"))catalogCache=null;ContentValues values=new ContentValues();values.put("key",key);values.put("value",value);getWritableDatabase().insertWithOnConflict("settings",null,values,SQLiteDatabase.CONFLICT_REPLACE);}
+    public synchronized void put(String key,String value){settingsCache.remove(key);if(key.equals("experience")||key.equals("customZikrs")||key.equals("zikrOrder")||key.equals("deletedZikrs"))catalogCache=null;ContentValues values=new ContentValues();values.put("key",key);values.put("value",value);getWritableDatabase().insertWithOnConflict("settings",null,values,SQLiteDatabase.CONFLICT_REPLACE);}
     public synchronized void bind(String base,String token){SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{put("base",base);put("token",token);put("serverCursor","0");put("syncRetryAt","0");db.setTransactionSuccessful();}finally{db.endTransaction();}}
-    public synchronized long nextSync(){long now=System.currentTimeMillis();long completed;try{completed=Long.parseLong(value("syncSlot","0"));}catch(NumberFormatException e){completed=0;}return SyncPolicy.next(now,ZoneId.systemDefault(),completed);}
-    public synchronized boolean claimSync(){long scheduled=nextSync(),now=System.currentTimeMillis();if(scheduled>now)return false;put("syncSlot",String.valueOf(SyncPolicy.slot(now,ZoneId.systemDefault())));return true;}
+    public synchronized long nextSync(){long retry;try{retry=Long.parseLong(value("dailyRetryAt","0"));}catch(NumberFormatException e){retry=0;}return SyncPolicy.next(System.currentTimeMillis(),ZoneId.systemDefault(),value("dailySyncSuccess",""),retry);}
+    public synchronized boolean claimSync(){return nextSync()<=System.currentTimeMillis();}
     public synchronized void requestSync(){put("syncRequested","true");}
     public synchronized boolean needsSync(){return enabled("syncRequested",false)||queued()>0;}
     public synchronized boolean linked(){return !value("token","").isEmpty();}

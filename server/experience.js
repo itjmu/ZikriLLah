@@ -12,7 +12,7 @@ export function themeFromText(text,id){
  return {id,name,background,surface,accent,text:foreground};
 }
 export function readExperience(store){
- const row=store.db.prepare('SELECT value FROM meta WHERE key=?').get('app_experience');return row?JSON.parse(row.value):{themes:[],active:null,backgrounds:{main:'',menu:''},notifications:[]};
+ const row=store.db.prepare('SELECT value FROM meta WHERE key=?').get('app_experience');return {themes:[],active:null,backgrounds:{main:'',menu:''},notifications:[],sounds:[],zikrs:[],...(row?JSON.parse(row.value):{})};
 }
 export function saveExperience(store,value){store.db.prepare('INSERT OR REPLACE INTO meta VALUES(?,?)').run('app_experience',JSON.stringify(value));}
 export function publicExperience(store,now=Date.now()){

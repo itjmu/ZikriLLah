@@ -13,7 +13,7 @@ public final class Experience {
  public static JSONObject theme(ZikrStore s){String id=themeId(s);JSONArray list=themes(s);for(int i=0;i<list.length();i++){JSONObject item=list.optJSONObject(i);if(item!=null&&id.equals(item.optString("id")))return item;}return null;}
  public static String path(ZikrStore s,String target){JSONObject bg=data(s).optJSONObject("backgrounds");String path=bg==null?"":bg.optString(target);return path.matches("/media/[a-f0-9-]{36}[.](jpg|png|webp)")?path:"";}
  private static File file(Context c,String path){return new File(c.getCacheDir(),"background-"+path.substring(path.lastIndexOf('/')+1));}
- public static String signature(Context c,ZikrStore s){String main=path(s,"main"),menu=path(s,"menu");return themeId(s)+":"+String.valueOf(theme(s))+":"+main+":"+menu+":"+(!main.isEmpty()&&file(c,main).exists())+":"+(!menu.isEmpty()&&file(c,menu).exists());}
+ public static String signature(Context c,ZikrStore s){String main=path(s,"main"),menu=path(s,"menu");return data(s).toString().hashCode()+":"+themeId(s)+":"+String.valueOf(theme(s))+":"+main+":"+menu+":"+(!main.isEmpty()&&file(c,main).exists())+":"+(!menu.isEmpty()&&file(c,menu).exists());}
  public static Drawable background(Context c,ZikrStore s,String target,int color){
   String path=path(s,target);if(path.isEmpty()||!file(c,path).exists())return new ColorDrawable(color);
   BitmapFactory.Options bounds=new BitmapFactory.Options();bounds.inJustDecodeBounds=true;BitmapFactory.decodeFile(file(c,path).getPath(),bounds);if(bounds.outWidth<=0)return new ColorDrawable(color);
@@ -21,7 +21,11 @@ public final class Experience {
   Bitmap image=BitmapFactory.decodeFile(file(c,path).getPath(),options);if(image==null)return new ColorDrawable(color);BitmapDrawable photo=new BitmapDrawable(c.getResources(),image);photo.setGravity(android.view.Gravity.FILL);
   return new LayerDrawable(new Drawable[]{photo,new ColorDrawable((color&0x00ffffff)|0xc8000000)});
  }
+ public static File soundFile(Context c,String path){return new File(c.getCacheDir(),"sound-"+path.substring(path.lastIndexOf('/')+1));}
+ public static JSONArray sounds(ZikrStore s){JSONArray a=data(s).optJSONArray("sounds");return a==null?new JSONArray():a;}
  public static void accept(Context c,ZikrStore s,JSONObject config){if(config==null)return;s.put("experience",config.toString());Reminders.news(c,config);
+  JSONArray sounds=sounds(s);for(int i=0;i<sounds.length();i++){String path=sounds.optJSONObject(i).optString("path");if(!path.matches("/media/[a-f0-9-]{36}[.]wav"))continue;File out=soundFile(c,path);if(out.exists())continue;HttpURLConnection connection=null;try{connection=(HttpURLConnection)new URL(s.value("base","")+path).openConnection();connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(10000);connection.setReadTimeout(15000);if(connection.getResponseCode()!=200)continue;try(InputStream in=connection.getInputStream();ByteArrayOutputStream bytes=new ByteArrayOutputStream()){byte[] b=new byte[4096];int n;while((n=in.read(b))!=-1){if(bytes.size()+n>1024*1024)throw new IOException();bytes.write(b,0,n);}byte[] data=bytes.toByteArray();if(data.length<12||!new String(data,0,4,java.nio.charset.StandardCharsets.US_ASCII).equals("RIFF")||!new String(data,8,4,java.nio.charset.StandardCharsets.US_ASCII).equals("WAVE"))continue;File tmp=new File(out.getPath()+".tmp");try(FileOutputStream f=new FileOutputStream(tmp)){f.write(data);}if(!tmp.renameTo(out))tmp.delete();}}catch(Exception ignored){}finally{if(connection!=null)connection.disconnect();}}
+
   for(String target:new String[]{"main","menu"}){String path=path(s,target);if(path.isEmpty())continue;File output=file(c,path);if(output.exists())continue;
    try{URI base=URI.create(s.value("base",""));if(!"https".equals(base.getScheme())||base.getHost()==null||base.getUserInfo()!=null)continue;
     HttpURLConnection connection=(HttpURLConnection)new URL(base+path).openConnection();connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(10000);connection.setReadTimeout(15000);

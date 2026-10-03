@@ -4,6 +4,21 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createStore} from '../server/store.js';
+test('APK, web and bot converge for the same Telegram ID while another account stays isolated',()=>{
+  const dir=mkdtempSync(join(tmpdir(),'zikr-three-')),store=createStore(dir);
+  try{
+    const user='12345';store.profile(user,'Test');
+    const apk=store.token(user),web=store.token(user);
+    const event=(id)=>({id,zikr:'subhanallah',at:new Date().toISOString()});
+    const offline=[event('apk-offline-1'),event('apk-offline-2')];
+    store.sync(store.user(apk),offline);store.sync(store.user(web),[event('web-event-1')]);
+    store.botTap(user,event('telegram-event-1'));
+    assert.equal(store.sync(store.user(apk),offline).length,4);
+    assert.equal(store.sync(store.user(web),[]).length,4);
+    assert.equal(store.sync(user,[]).length,4);
+    assert.equal(store.sync('other',[]).length,0);
+  }finally{store.db.close();rmSync(dir,{recursive:true,force:true});}
+});
 test('Offline devices merge, retries do not duplicate, accounts stay isolated, data survives restart',()=>{
   const dir=mkdtempSync(join(tmpdir(),'zikrillah-'));let store=createStore(dir);
   try{

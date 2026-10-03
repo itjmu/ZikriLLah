@@ -12,10 +12,11 @@ export function createAppServer(store,dir='./data',auth={}){return http.createSe
   const send = (status,data) => { res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'}); res.end(JSON.stringify(data)); };
   try {
     const path = new URL(req.url,'http://localhost').pathname;
+    if(req.method==='GET'&&path==='/api/config')return send(200,{botUsername:auth.botUsername||process.env.BOT_USERNAME||'',botId:process.env.BOT_ID||''});
     if(req.method==='GET'&&path==='/api/content')return send(200,{content:publicContent(store.content()),experience:publicExperience(store)});
-    if(req.method==='GET'&&/^\/media\/[a-f0-9-]{36}\.(jpg|png|gif|webp|mp4)$/.test(path)){
+    if(req.method==='GET'&&/^\/media\/[a-f0-9-]{36}\.(jpg|png|gif|webp|mp4|wav)$/.test(path)){
       let data;try{data=await readFile(join(dir,path.slice(1)));}catch{return send(404,{error:'Не найдено'});}
-      const type={jpg:'image/jpeg',png:'image/png',gif:'image/gif',webp:'image/webp',mp4:'video/mp4'}[path.split('.').pop()];
+      const type={jpg:'image/jpeg',png:'image/png',gif:'image/gif',webp:'image/webp',mp4:'video/mp4',wav:'audio/wav'}[path.split('.').pop()];
       const headers={'Content-Type':type,'Cache-Control':'public,max-age=86400','X-Content-Type-Options':'nosniff','Accept-Ranges':'bytes'};
       if(req.headers.range){const m=/^bytes=(\d+)-(\d*)$/.exec(req.headers.range);const start=m?Number(m[1]):NaN,end=m&&m[2]?Math.min(Number(m[2]),data.length-1):data.length-1;
         if(!Number.isInteger(start)||start>end||start>=data.length){res.writeHead(416,{'Content-Range':'bytes */'+data.length});return res.end();}
@@ -48,7 +49,7 @@ export function createAppServer(store,dir='./data',auth={}){return http.createSe
       }
       const user=store.user((req.headers.authorization || '').replace(/^Bearer /,''));
       if(!user) return send(401,{error:'Привяжите устройство через /link в боте'});
-      try { return send(200,{events:store.sync(user,data?.events,data?.customZikrs,data?.deletedZikrs,data?.cursor),cursor:store.cursor(user),customZikrs:store.customZikrs(user),deletedZikrs:store.deletedZikrs(user),content:publicContent(store.content()),experience:publicExperience(store)}); } catch { return send(400,{error:'Некорректные записи'}); }
+      try { return send(200,{account:String(user),botUsername:auth.botUsername||process.env.BOT_USERNAME||'',broadcasts:store.broadcastFeed(user),events:store.sync(user,data?.events,data?.customZikrs,data?.deletedZikrs,data?.cursor),cursor:store.cursor(user),customZikrs:store.customZikrs(user),deletedZikrs:store.deletedZikrs(user),content:publicContent(store.content()),experience:publicExperience(store)}); } catch { return send(400,{error:'Некорректные записи'}); }
     }
     if(/^\/sounds\/(beads|water|rain|stones|soft)\.wav$/.test(path))files[path]=path.slice(1);
     if(req.method!=='GET' || !files[path]) return send(404,{error:'Не найдено'});

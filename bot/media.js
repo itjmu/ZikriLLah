@@ -3,6 +3,7 @@ import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 const LIMIT=20*1024*1024;
 export function mediaExtension(bytes){
+  if(bytes.subarray(0,4).toString()==='RIFF'&&bytes.subarray(8,12).toString()==='WAVE'){if(bytes.length>1024*1024)throw Error('Sound too large');return 'wav';}
   if(bytes[0]===255&&bytes[1]===216&&bytes[2]===255)return 'jpg';
   if(bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])))return 'png';
   if(['GIF87a','GIF89a'].includes(bytes.subarray(0,6).toString()))return 'gif';

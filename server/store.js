@@ -13,8 +13,11 @@ export function createStore(dir) {
   db.exec(`CREATE TABLE IF NOT EXISTS custom_zikrs(user TEXT,id TEXT,value TEXT,PRIMARY KEY(user,id));`);
   db.exec("CREATE TABLE IF NOT EXISTS deleted_zikrs(user TEXT,id TEXT,PRIMARY KEY(user,id));");
   db.exec('CREATE TABLE IF NOT EXISTS device_links(id TEXT PRIMARY KEY,secret_hash TEXT NOT NULL,user TEXT,expires INTEGER NOT NULL)');
+  db.exec('CREATE TABLE IF NOT EXISTS broadcast_feed(id TEXT PRIMARY KEY,body TEXT NOT NULL)');
   return {
     db,
+    sharedZikrs(){const r=db.prepare('SELECT value FROM meta WHERE key=?').get('app_experience');return r?(JSON.parse(r.value).zikrs||[]):[];},
+    broadcastFeed(user){if(!db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='broadcast_deliveries'").get())return [];return db.prepare("SELECT f.id,f.body FROM broadcast_feed f JOIN broadcast_deliveries d ON d.job=f.id WHERE d.user=? ORDER BY f.rowid DESC LIMIT 20").all(String(user)).map(r=>({id:r.id,...JSON.parse(r.body)}));},
     token(user){const token=randomBytes(32).toString('hex');db.prepare('INSERT INTO tokens VALUES(?,?)').run(hash(token),String(user));return token;},
     beginDevice(){
       db.prepare('DELETE FROM device_links WHERE expires<?').run(Date.now());
@@ -27,9 +30,9 @@ export function createStore(dir) {
       if(typeof secret!=='string'||!/^[a-f0-9]{64}$/.test(secret))return null;
       const row=db.prepare('SELECT * FROM device_links WHERE id=? AND secret_hash=? AND expires>?').get(id,hash(secret),Date.now());
       if(!row)return null;if(!row.user)return {pending:true};
-      const token=hash('device-token:'+secret);db.prepare('INSERT OR IGNORE INTO tokens VALUES(?,?)').run(hash(token),row.user);return {token};
+      const token=hash('device-token:'+secret);db.prepare('INSERT OR IGNORE INTO tokens VALUES(?,?)').run(hash(token),row.user);return {token,account:String(row.user)};
     },
-    catalog(user){const row=db.prepare('SELECT settings FROM profiles WHERE user=?').get(String(user));const settings=row?JSON.parse(row.settings):{};return orderedCatalog([...builtinZikrs,...this.customZikrs(user)],settings.zikrOrder||[],this.deletedZikrs(user));},
+    catalog(user){const row=db.prepare('SELECT settings FROM profiles WHERE user=?').get(String(user));const settings=row?JSON.parse(row.settings):{};return orderedCatalog([...builtinZikrs,...this.sharedZikrs(),...this.customZikrs(user)],settings.zikrOrder||[],this.deletedZikrs(user));},
     deletedZikrs(user){return db.prepare('SELECT id FROM deleted_zikrs WHERE user=?').all(String(user)).map(r=>r.id);},
     deleteZikrs(user,ids=[]){if(!Array.isArray(ids)||ids.length>200||ids.some(id=>typeof id!=='string'||!/^custom-[a-f0-9-]{36}$/.test(id)))throw Error('Invalid deleted dhikr');
       const insert=db.prepare('INSERT OR IGNORE INTO deleted_zikrs VALUES(?,?)');for(const id of ids)insert.run(String(user),id);
@@ -103,7 +106,7 @@ export function createStore(dir) {
     sync(user, events, customZikrs=[],deletedZikrs=[],cursor=0) {
       if(!Number.isSafeInteger(cursor)||cursor<0)throw Error("Invalid cursor");
       this.mergeZikrs(user,customZikrs);this.deleteZikrs(user,deletedZikrs);
-      const ids=[...builtinZikrs,...this.customZikrs(user)].map(z=>z.id);
+      const ids=[...builtinZikrs,...this.sharedZikrs(),...this.customZikrs(user)].map(z=>z.id);
       if (!Array.isArray(events) || events.length > 5000 || events.some(e => !e || typeof e.id !== 'string' || !/^[a-zA-Z0-9-]{8,100}$/.test(e.id) || !ids.includes(e.zikr) || typeof e.at !== 'string' || !Number.isFinite(Date.parse(e.at)))) throw new Error('Invalid events');
       const insert = db.prepare('INSERT OR IGNORE INTO events VALUES(?,?,?,?)');
       db.exec('BEGIN');

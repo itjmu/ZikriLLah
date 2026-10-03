@@ -5,7 +5,7 @@ import {createHandler} from './handler.js';
 import {mediaSaver} from './media.js';
 const token=process.env.BOT_TOKEN;
 if(!token){console.error('Добавьте BOT_TOKEN в .env');process.exit(1);}
-try{const identity=await api('getMe',{});process.env.BOT_USERNAME=identity.username;}catch{console.error('Telegram connection failed during startup. Check token and network.');process.exit(1);}
+try{const identity=await api('getMe',{});process.env.BOT_USERNAME=identity.username;process.env.BOT_ID=String(identity.id);}catch{console.error('Telegram connection failed during startup. Check token and network.');process.exit(1);}
 const store=createStore(process.env.DATA_DIR||'./data');
 if(process.env.BOT_API_ENABLED!=='0'){const server=createAppServer(store,process.env.DATA_DIR||'./data');try{await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(Number(process.env.PORT||3000),process.env.HOST||'127.0.0.1',resolve);});console.log('Бот + API: http://localhost:'+(process.env.PORT||3000));}catch(e){console.error(e.code==='EADDRINUSE'?'Порт API занят. Остановите старый сервер и запустите бот снова.':'API не запустился.');process.exit(1);}}
 async function api(method,body){
@@ -17,7 +17,7 @@ async function api(method,body){
 const handle=createHandler(store,api,{publicUrl:process.env.PUBLIC_URL||'',adminIds:(process.env.ADMIN_IDS||'').split(',').map(s=>s.trim()).filter(s=>/^\d+$/.test(s)),saveMedia:mediaSaver(api,token,process.env.DATA_DIR||'./data')});
 const broadcastWorker=createBroadcasts(store,api,{adminIds:(process.env.ADMIN_IDS||'').split(',').map(s=>s.trim())});broadcastWorker.recover();setInterval(()=>broadcastWorker.tick().catch(()=>console.error('Рассылка: ошибка очереди, повтор проверки позже.')),1000);
 let offset=Number(store.db.prepare('SELECT value FROM meta WHERE key=?').get('bot_offset')?.value||0);
-console.log('ZikriLLah bot v0.13 started');
+console.log('ZikriLLah bot v0.14 started');
 while(true){
   try{
     for(const update of await api('getUpdates',{offset,timeout:25,allowed_updates:['message','callback_query']})){

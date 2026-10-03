@@ -18,6 +18,7 @@ if(!zikrs.some(z=>z.id===state.selected))state.selected=zikrs[0].id;
 state.soundEnabled??=state.feedbackMode===0;state.vibrationEnabled??=state.feedbackMode<2;state.silent??=state.feedbackMode===2;
 if(!translations[state.language])state.language='ru';
 if(state.theme==='stealth'){state.stealth=true;state.theme=state.previousTheme&&state.previousTheme!=='stealth'?state.previousTheme:'emerald';}
+let syncPromise=null,updatesSignature='';
 let telegramReady=!window.Telegram?.WebApp?.initData;
 let busy=false,linking=false,timer,page='home',statusKey='local';const tapGate=new TapGate();
 const t=key=>translations[state.language][key]||key;
@@ -45,10 +46,10 @@ function render(){
   $('arabic').textContent=z.arabic;$('zikrName').textContent=name;$('meaning').textContent=meaning;$('zikrText').classList.toggle('text-hidden',!state.showText);
   $('beadProgress').style.maskImage=`conic-gradient(from 90deg,#000 ${stats.current/state.goal*360}deg,transparent 0)`;
   $('textToggle').checked=state.showText;$('autoNext').checked=state.autoNext;
-  for(const key of ['soundEnabled','vibrationEnabled','silent'])$(key).checked=state[key];
-  for(const [id,key] of [['quickSound','soundEnabled'],['quickVibration','vibrationEnabled'],['quickSilent','silent']]){$(id).setAttribute('aria-pressed',Boolean(state[key]));$(id).classList.toggle('active',state[key]);}
+
+  const mode=feedbackMode();$('feedbackMode').textContent=['🔊📳','🔊','📳','🔇'][mode];$('feedbackLabel').textContent=(state.language==='ru'?['Звук и вибрация','Только звук','Только вибрация','Без звука и вибрации']:['Sound + vibration','Sound only','Vibration only','Silent'])[mode];
   if(page==='stats'){const week=weekCounts(state.events),maximum=Math.max(1,...week.map(d=>d.count));$('weekChart').replaceChildren();for(const day of week){const bar=document.createElement('div'),number=document.createElement('strong'),fill=document.createElement('i'),label=document.createElement('small');number.textContent=day.count;fill.style.height=Math.max(3,100*day.count/maximum)+'px';label.textContent=day.date.toLocaleDateString(state.language,{day:'2-digit',month:'2-digit'});bar.append(number,fill,label);$('weekChart').append(bar);}}
-  $('soundChoice').value=state.clickSound;
+  for(const sound of state.experience?.sounds||[]){if(![...$('soundChoice').options].some(o=>o.value===sound.id))$('soundChoice').add(new Option(sound.name,sound.id));}$('soundChoice').value=state.clickSound;renderUpdates();
   renderPublication($('publication'),state.content,state.language);
   $('account').textContent=state.token?'↻ Telegram':'↗ Telegram';$('account').setAttribute('aria-label',t(state.token?'connected':'connect')); $('status').textContent=t(statusKey);
   for(const button of document.querySelectorAll('[data-zikr]')){const z=zikrs.find(z=>z.id===button.dataset.zikr);const [name,meaning]=localized(z);button.querySelector('span').textContent=name;button.querySelector('small').textContent=meaning;button.classList.toggle('active',z.id===state.selected);}
@@ -57,10 +58,10 @@ function render(){
   $('quickStealth').setAttribute('aria-pressed',Boolean(state.stealth));$('quickStealth').setAttribute('aria-label',t('stealth'));$('menu').textContent=state.stealth?'↩':'☰';$('menu').setAttribute('aria-label',state.stealth?(state.language==='ru'?'Выйти из скрытого режима':'Exit discreet mode'):t('menu'));setPage(page);
 }
 const soundPlayers=new Map();
-function clickSound(){try{const key=['beads','water','rain','stones','soft'].includes(state.clickSound)?state.clickSound:'beads';let player=soundPlayers.get(key);if(!player){player=new Audio('/sounds/'+key+'.wav');player.volume=.65;soundPlayers.set(key,player);}player.currentTime=0;player.play().catch(()=>{});}catch{}}
+function clickSound(){try{const remote=state.experience?.sounds?.find(s=>s.id===state.clickSound&&/^\/media\/[a-f0-9-]{36}[.]wav$/.test(s.path));const key=remote?remote.path:['beads','water','rain','stones','soft'].includes(state.clickSound)?state.clickSound:'beads';let player=soundPlayers.get(key);if(!player){player=new Audio(key.startsWith('/media/')?key:'/sounds/'+key+'.wav');player.volume=.65;soundPlayers.set(key,player);}player.currentTime=0;player.play().catch(()=>{});}catch{}}
 let catalogSignature='';
 function rebuildZikrs(){
-  zikrs=orderedCatalog([...builtinZikrs,...state.customZikrs],state.zikrOrder,state.deletedZikrs);
+  zikrs=orderedCatalog([...builtinZikrs,...(state.experience?.zikrs||[]),...state.customZikrs],state.zikrOrder,state.deletedZikrs);
   if(!zikrs.some(z=>z.id===state.selected))state.selected=cycleIds(zikrs,state.cycleZikrs)[0];
   const signature=JSON.stringify([zikrs.map(z=>z.id),state.cycleZikrs,state.language]);if(signature===catalogSignature)return;catalogSignature=signature;$('zikrOptions').replaceChildren();
   const hint=document.createElement('p');hint.className='muted';hint.textContent=state.language==='ru'?'Удерживайте ⠿ и перетаскивайте. Выше черты — зикры в цикле, ниже — остальные.':'Hold ⠿ and drag. Above the line: cycle; below: other dhikrs.';$('zikrOptions').append(hint);
@@ -91,12 +92,12 @@ document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.c
 document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{setPage(b.dataset.page);render();});
 $('menu').onclick=()=>{if(state.stealth){state.stealth=false;save();render();return;}setPage('home');render();$('drawer').showModal();};$('menuBack').onclick=()=>setPage('home');
 $('soundChoice').onchange=e=>{state.clickSound=e.target.value;save();clickSound(false);};
-for(const [id,key] of [['quickSound','soundEnabled'],['quickVibration','vibrationEnabled'],['quickSilent','silent']])$(id).onclick=()=>{state[key]=!state[key];save();render();};
-for(const key of ['soundEnabled','vibrationEnabled','silent'])$(key).onchange=e=>{state[key]=e.target.checked;save();render();};
+
+
 $('cycleLanguage').onclick=()=>{state.language=state.language==='ru'?'en':'ru';save();render();};
 $('cycleTheme').onclick=()=>{const themes=['emerald','light','dark','black',...(state.experience?.themes||[]).map(t=>t.id)];state.theme=themes[(themes.indexOf(state.theme)+1)%themes.length];save();render();};
 $('quickStealth').onclick=()=>{state.stealth=!state.stealth;save();$('drawer').close();render();};
-$('account').onclick=()=>{if(state.token){sync();return;}$('drawer').close();$('linkDialog').showModal();};
+$('account').onclick=()=>{if(state.token&&!state.authExpired){sync();return;}$('drawer').close();beginDeviceLink();};
 $('testVibration').onclick=()=>{$('hapticStatus').textContent=t(haptic(true)==='unavailable'?'hapticMissing':'hapticSent');};
 $('stealthToggle').onclick=()=>{state.stealth=!state.stealth;save();$('drawer').close();render();};
 function updateClock(){if(!state.stealth)return;const date=new Date();$('clockTime').textContent=date.toLocaleTimeString(state.language,{hour:'2-digit',minute:'2-digit',hour12:false});$('clockDate').textContent=date.toLocaleDateString(state.language,{weekday:'long',day:'numeric',month:'long'});$('stealthClock').style.transform='translate('+((date.getMinutes()%3-1)*4)+'px,'+((Math.floor(date.getMinutes()/3)%3-1)*4)+'px)';}
@@ -123,8 +124,9 @@ $('tap').addEventListener('click',e=>{e.preventDefault();if(e.detail===0&&!docum
 $('surface').addEventListener('dblclick',e=>e.preventDefault());
 $('goal').onchange=e=>{const n=Number(e.target.value);if(!Number.isInteger(n)||n<1||n>100000){e.target.value=state.goal;return;}state.goal=n;save();render();};$('interval').onchange=e=>{state.tapInterval=Number(e.target.value);save();};
 for(const [id,key] of [['textToggle','showText'],['autoNext','autoNext']])$(id).onchange=e=>{state[key]=e.target.checked;save();render();};
-async function post(path,body){const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${state.token}`},body:JSON.stringify(body),signal:AbortSignal.timeout(15000)});const data=await response.json();if(!response.ok)throw Error(data.error||'Sync failed');return data;}
-async function sync(){if(!telegramReady||busy||!state.token||!navigator.onLine)return;busy=true;setStatus('syncing');try{do{const batch=state.pending.slice(0,5000),data=await post('/api/sync',{events:batch,customZikrs:state.customZikrs,deletedZikrs:state.deletedZikrs});const customZikrs=[...new Map([...(data.customZikrs||[]),...state.customZikrs].map(z=>[z.id,z])).values()];const next={...state,customZikrs,deletedZikrs:[...new Set([...state.deletedZikrs,...(data.deletedZikrs||[])])],content:data.content??null,experience:data.experience??state.experience,...mergeSync(state.pending,batch,data.events)};localStorage.setItem(storageKey,JSON.stringify(next));state=next;render();}while(state.pending.length);setStatus('synced');}catch{setStatus(navigator.onLine?'error':'offline');}finally{busy=false;}}
+async function post(path,body){const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${state.token}`},body:JSON.stringify(body),signal:AbortSignal.timeout(15000)});const data=await response.json();if(!response.ok){if(response.status===401&&path==='/api/sync')state.authExpired=true;throw Error(data.error||'Sync failed');}return data;}
+function sync(){if(syncPromise)return syncPromise;syncPromise=performSync().finally(()=>syncPromise=null);return syncPromise;}
+async function performSync(){if(!telegramReady||!state.token||!navigator.onLine)return false;busy=true;setStatus('syncing');try{do{const batch=state.pending.slice(0,5000),data=await post('/api/sync',{events:batch,customZikrs:state.customZikrs,deletedZikrs:state.deletedZikrs});const customZikrs=[...new Map([...(data.customZikrs||[]),...state.customZikrs].map(z=>[z.id,z])).values()];const next={...state,customZikrs,deletedZikrs:[...new Set([...state.deletedZikrs,...(data.deletedZikrs||[])])],content:data.content??null,experience:data.experience??state.experience,broadcasts:data.broadcasts||[],account:data.account||state.account,botUsername:data.botUsername||state.botUsername,lastSync:Date.now(),authExpired:false,...mergeSync(state.pending,batch,data.events)};localStorage.setItem(storageKey,JSON.stringify(next));state=next;render();}while(state.pending.length);setStatus('synced');return true;}catch{setStatus(navigator.onLine?'error':'offline');return false;}finally{busy=false;}}
 $('linkForm').onsubmit=async e=>{e.preventDefault();if(state.token||linking)return;linking=true;$('linkSubmit').disabled=true;try{const data=await post('/api/link',{code:$('code').value.trim()});state.token=data.token;save();$('linkDialog').close();render();await sync();}catch{$('linkStatus').textContent=t('linkError');}finally{linking=false;$('linkSubmit').disabled=false;}};
 window.addEventListener('online',()=>{scheduledSync();refreshContent();});window.addEventListener('offline',()=>setStatus('offline'));
 document.addEventListener('visibilitychange',()=>{pointer=null;updateWakeLock();if(document.visibilityState==='visible'){render();scheduledSync();}});
@@ -134,19 +136,25 @@ setInterval(()=>{render();scheduledSync();refreshContent();},30000);refreshConte
 
 function finishWelcome(){state.onboarded=true;save();$('welcome').close();}
 $('welcomeSkip').onclick=finishWelcome;
-$('welcomeConnect').onclick=()=>{finishWelcome();$('linkDialog').showModal();};
+$('welcomeConnect').onclick=()=>{finishWelcome();beginDeviceLink();};
 $('welcome').addEventListener('cancel',()=>{state.onboarded=true;save();});
 if(telegramReady&&!state.onboarded&&!state.token&&!state.events.length)$('welcome').showModal();
 
-function scheduledSync(){
- if(!telegramReady||!state.token||!navigator.onLine||busy)return;
- const now=new Date(),slot=new Date(now);let hour=[22,12,7].find(h=>now.getHours()>=h);
- if(hour===undefined){slot.setDate(slot.getDate()-1);hour=22;}slot.setHours(hour,0,0,0);
- if((state.autoSyncSlot||0)>=slot.getTime())return;state.autoSyncSlot=slot.getTime();save();sync();
-}
+function dailyKey(){const d=new Date();return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate();}
+async function scheduledSync(){if(!telegramReady||!state.token||!navigator.onLine||busy||state.dailySyncSuccess===dailyKey()||Date.now()<(state.dailyRetryAt||0))return;state.dailyRetryAt=Date.now()+15*60*1000;save();if(await sync()){state.dailySyncSuccess=dailyKey();state.dailyRetryAt=0;save();}}
 async function telegramLogin(){
  const initData=window.Telegram?.WebApp?.initData;if(!initData)return;
  try{const data=await post('/api/auth/telegram',{initData});state.token=data.token;state.onboarded=true;save();telegramReady=true;if($('welcome').open)$('welcome').close();render();await sync();}
  catch{setStatus('linkError');$('status').textContent=state.language==='ru'?'Вход Telegram не подтверждён. Откройте Mini App заново; при другом аккаунте используйте отдельный профиль браузера.':'Telegram login failed. Reopen the Mini App; use a separate browser profile for another account.';}
 }
 telegramLogin();
+function feedbackMode(){return state.silent?3:state.soundEnabled?(state.vibrationEnabled?0:1):state.vibrationEnabled?2:3;}
+$('feedbackMode').onclick=()=>{const mode=(feedbackMode()+1)%4;state.soundEnabled=mode<2;state.vibrationEnabled=mode===0||mode===2;state.silent=mode===3;save();render();};
+function renderUpdates(){const items=[...(state.experience?.notifications||[]).filter(n=>n.expiresAt>Date.now()),...(state.broadcasts||[])];const signature=JSON.stringify([items,state.botUsername]);if(signature===updatesSignature)return;updatesSignature=signature;const root=$('updates');root.replaceChildren();for(const item of items){const p=document.createElement('p');p.textContent='📨 '+item.text;root.append(p);}if(state.broadcasts?.length&&/^[A-Za-z0-9_]{5,32}$/.test(state.botUsername||'')){const a=document.createElement('a');a.textContent=state.language==='ru'?'Открыть оригиналы в Telegram':'Open originals in Telegram';a.href='https://t.me/'+state.botUsername;a.target='_blank';a.rel='noopener';root.append(a);}}
+let devicePolling=false;
+async function beginDeviceLink(){const popup=window.open('about:blank','_blank');if(popup)popup.opener=null;try{const data=await post('/api/auth/device',{});if(!/^https:\/\/t[.]me\/[A-Za-z0-9_]+[?]start=connect_[a-f0-9]+$/.test(data.url))throw Error();sessionStorage.setItem('zikr-device-link',JSON.stringify({...data,expires:Date.now()+600000}));if(popup)popup.location.href=data.url;else location.href=data.url;setStatus('pending');pollDeviceLink();}catch{if(popup)popup.close();alert(state.language==='ru'?'Не удалось открыть бота. Проверьте Интернет и сервер.':'Unable to open bot. Check network and server.');}}
+async function pollDeviceLink(){if(devicePolling||!navigator.onLine)return;let request;try{request=JSON.parse(sessionStorage.getItem('zikr-device-link'));}catch{return;}if(!request)return;if(request.expires<Date.now()){sessionStorage.removeItem('zikr-device-link');setStatus('linkError');return;}devicePolling=true;try{const result=await post('/api/auth/poll',{id:request.id,secret:request.secret});if(result.token){if(state.account&&result.account&&state.account!==result.account)throw Error('Different account');state.token=result.token;state.authExpired=false;state.onboarded=true;telegramReady=true;save();sessionStorage.removeItem('zikr-device-link');render();await sync();}}catch{setStatus('linkError');}finally{devicePolling=false;if(sessionStorage.getItem('zikr-device-link')&&document.visibilityState==='visible')setTimeout(pollDeviceLink,4000);}}
+window.addEventListener('pageshow',pollDeviceLink);document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pollDeviceLink();});pollDeviceLink();
+let allowExit=false;
+async function confirmExit(){if(!confirm(state.language==='ru'?'Выйти? При наличии Интернета сначала выполним синхронизацию.':'Exit? If online, sync first.'))return;if(navigator.onLine&&state.token&&!(await sync())&&!confirm(state.language==='ru'?'Обмен не завершён. Прогресс сохранён локально. Всё равно выйти?':'Sync failed. Progress is saved locally. Exit anyway?'))return;allowExit=true;window.Telegram?.WebApp?.disableClosingConfirmation?.();if(window.Telegram?.WebApp?.initData){window.Telegram.WebApp.close();return;}window.close();$('status').textContent=state.language==='ru'?'Можно закрыть вкладку.':'You can close this tab.';}
+$('exitApp').onclick=confirmExit;window.addEventListener('beforeunload',e=>{if(!allowExit){e.preventDefault();e.returnValue='';}});window.Telegram?.WebApp?.enableClosingConfirmation?.();window.Telegram?.WebApp?.BackButton?.show?.();window.Telegram?.WebApp?.BackButton?.onClick?.(confirmExit);

@@ -37,7 +37,7 @@ export function createBroadcasts(store,api,{adminIds=[],now=()=>Date.now()}={}){
    if(!draft?.preview||action.split(':')[3]!==draft.id){await send({text:'Этот предпросмотр устарел. Создайте новый.'});return true;}
    db.exec('BEGIN IMMEDIATE');try{
     const inserted=db.prepare("INSERT OR IGNORE INTO broadcasts(id,admin,source,messages,status) VALUES(?,?,?,?,'running')").run(draft.id,String(from.id),String(m.chat.id),JSON.stringify(draft.preview)).changes;
-    if(inserted)db.prepare("INSERT OR IGNORE INTO broadcast_deliveries(job,user) SELECT ?,user FROM profiles").run(draft.id);
+    if(inserted){db.prepare("INSERT OR IGNORE INTO broadcast_deliveries(job,user) SELECT ?,user FROM profiles").run(draft.id);db.prepare('INSERT OR IGNORE INTO broadcast_feed VALUES(?,?)').run(draft.id,JSON.stringify({at:now(),text:(draft.summaries||['Новая рассылка в Telegram']).join('\n\n').slice(0,16000),telegramOnly:true}));}
     set(from.id,{broadcastDraft:null});db.exec('COMMIT');
    }catch(e){db.exec('ROLLBACK');throw e;}
    await send({text:'Рассылка поставлена в очередь.\n'+summary(draft.id),reply_markup:markup([[['Статус','admin:b:status:'+draft.id],['Остановить','admin:b:stop:'+draft.id]]])});return true;
@@ -50,7 +50,7 @@ export function createBroadcasts(store,api,{adminIds=[],now=()=>Date.now()}={}){
     if(copies.length!==draft.ids.length)throw Error('Unsupported messages');
     const next={...draft,id:randomUUID(),preview:copies.map(r=>r.message_id)};set(from.id,{broadcastDraft:next});
     const count=db.prepare('SELECT COUNT(*) AS n FROM profiles').get().n;
-    await send({text:'Предпросмотр выше. Сообщений: '+copies.length+'. Получателей сейчас: '+count+'. Отправить всем пользователям бота?',reply_markup:markup([[['Отправить всем','admin:b:send:'+next.id]],[['Отмена','admin:b:cancel']]])});
+    await send({text:'Предпросмотр выше. Сообщений: '+copies.length+'. Получателей сейчас: '+count+'. Отправить всем пользователям бота? Текст и подписи также появятся в подключённых APK и вебе; оригиналы и медиа останутся в Telegram.',reply_markup:markup([[['Отправить всем','admin:b:send:'+next.id]],[['Отмена','admin:b:cancel']]])});
    }catch{set(from.id,{broadcastDraft:{...draft,preview:null}});await send({text:'Telegram не разрешил скопировать всё содержимое. Защищённые/служебные сообщения, счета, платные медиа и розыгрыши могут быть недоступны. Создайте новый черновик с обычными сообщениями.',reply_markup:markup([[['Новый черновик','admin:b:new']],[['Отмена','admin:b:cancel']]])});}
    return true;
   }
@@ -58,7 +58,7 @@ export function createBroadcasts(store,api,{adminIds=[],now=()=>Date.now()}={}){
    if(m.has_protected_content||m.invoice||m.paid_media||m.giveaway||m.giveaway_winners||!['text','photo','video','animation','audio','voice','video_note','document','sticker','contact','location','venue','poll','dice','game'].some(key=>m[key])){await send({text:'Этот тип сообщения нельзя использовать в рассылке.'});return true;}
    if(draft.ids.includes(m.message_id))return true;
    if(draft.ids.length>=100){await send({text:'Лимит черновика — 100 сообщений.'});return true;}
-   set(from.id,{broadcastDraft:{...draft,ids:[...draft.ids,m.message_id],preview:null}});
+   set(from.id,{broadcastDraft:{...draft,ids:[...draft.ids,m.message_id],summaries:[...(draft.summaries||[]),(m.text||m.caption||"Медиа / сообщение — открыть в Telegram").slice(0,2000)],preview:null}});
    // Album parts arrive separately; the explicit Preview button finalizes the collection.
    if(!m.media_group_id)await send({text:'Добавлено в черновик: '+(draft.ids.length+1),reply_markup:markup([[['Предпросмотр','admin:b:preview']],[['Отмена','admin:b:cancel']]])});
    return true;
