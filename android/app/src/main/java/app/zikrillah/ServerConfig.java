@@ -1,2 +1,2 @@
 package app.zikrillah;
-public final class ServerConfig { public static final String DEFAULT_URL="https://pockets-cheap-varied-powered.trycloudflare.com"; }
+public final class ServerConfig { public static final String DEFAULT_URL="https://housewares-festivals-submissions-divx.trycloudflare.com"; }
