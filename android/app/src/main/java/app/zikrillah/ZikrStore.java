@@ -14,9 +14,10 @@ public final class ZikrStore extends SQLiteOpenHelper {
     private final Map<String,String> settingsCache=new HashMap<>();
     private static ZikrStore instance;
     public static synchronized ZikrStore get(Context context){
-        if(instance==null){instance=new ZikrStore(context.getApplicationContext());instance.migrate(context.getApplicationContext());instance.prepareCounts();}
+        if(instance==null){instance=new ZikrStore(context.getApplicationContext());instance.migrate(context.getApplicationContext());instance.prepareCounts();instance.usePermanentServer();}
         return instance;
     }
+    private synchronized void usePermanentServer(){String base=value("base","");boolean temporary=false;try{String host=java.net.URI.create(base).getHost();temporary=host!=null&&host.endsWith(".trycloudflare.com");}catch(Exception ignored){}if(base.isEmpty()){put("base",ServerConfig.DEFAULT_URL);return;}if(!temporary)return;SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{put("base",ServerConfig.DEFAULT_URL);put("token","");put("serverCursor","0");put("linkId","");put("linkSecret","");put("linkBase","");put("botUsername","");put("dailySyncSuccess","");put("dailyRetryAt","0");db.execSQL("UPDATE events SET pending=1");db.setTransactionSuccessful();}finally{db.endTransaction();}}
     private ZikrStore(Context c){super(c,"zikrillah.db",null,1);setWriteAheadLoggingEnabled(true);try(java.io.InputStream in=c.getAssets().open("zikrs.json")){java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();byte[] chunk=new byte[4096];int n;while((n=in.read(chunk))!=-1)bytes.write(chunk,0,n);builtin=new JSONArray(bytes.toString("UTF-8"));}catch(Exception e){throw new IllegalStateException("Catalog unavailable",e);}}
     public synchronized JSONArray customZikrs(){try{return new JSONArray(value("customZikrs","[]"));}catch(JSONException e){throw new IllegalStateException(e);}}
     private List<String> ids(String key){List<String> result=new ArrayList<>();try{JSONArray values=new JSONArray(value(key,"[]"));for(int i=0;i<values.length();i++)result.add(values.optString(i));}catch(JSONException ignored){}return result;}
