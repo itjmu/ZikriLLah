@@ -1,3 +1,5 @@
+> Current release: **0.18.0**. Start with the [English engineering and deployment handoff](HANDOFF.md). Deploy the backend before updating clients.
+
 # ZikriLLah · v0.14
 
 **Актуально для 0.14:** [тестовый/рабочий контур, три способа синхронизации и вход Telegram](V014-TESTING.md). Описание расписания 0.13 ниже — история; Docker-файлы и данные сохраняются.

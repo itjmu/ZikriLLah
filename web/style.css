@@ -37,3 +37,7 @@ dialog.drawer{width:calc(100% - 52px);background:color-mix(in srgb,var(--bg) 90%
 .quick-preferences{grid-template-columns:repeat(4,minmax(0,1fr))}.quick-preferences button{min-width:0;padding:6px;font-size:16px}#updates p{white-space:pre-wrap;overflow-wrap:anywhere}
 
 .stealth-clock time{color:#e6e6e6}.stealth-clock p{color:#d2d2d2}#stealthCount{font-size:clamp(24px,8vw,46px);overflow-wrap:anywhere}
+
+.menu-button,:root[data-theme=stealth] .menu-button{width:48px;height:48px;font-size:23px}.tap-center{inset:22%}#arabic,#meaning{-webkit-line-clamp:3;line-clamp:3}.bead-track,.bead-progress{stroke-width:14}.danger{background:#9e2424!important;color:#fff!important;border-color:#e55858!important}
+
+.circle-zone{container-type:size;padding-top:18px}.tasbih{width:min(94cqw,100cqh,390px)}

@@ -39,14 +39,21 @@ public final class ZikrStore extends SQLiteOpenHelper {
     public synchronized void select(int index){put("selected",String.valueOf(index));put("selectedId",zikr(index).optString("id"));}
     public synchronized JSONObject zikr(int index){JSONArray list=catalog();return list.optJSONObject(Math.max(0,Math.min(index,list.length()-1)));}
     public synchronized void mergeZikrs(JSONArray remote)throws JSONException{
-        JSONArray local=customZikrs();Set<String> ids=new HashSet<>();for(int i=0;i<local.length();i++)ids.add(local.getJSONObject(i).getString("id"));
-        for(int i=0;i<remote.length();i++){JSONObject item=remote.getJSONObject(i);if(ids.add(item.getString("id")))local.put(item);}put("customZikrs",local.toString());
+        Map<String,JSONObject> map=new LinkedHashMap<>();JSONArray local=customZikrs();for(int i=0;i<local.length();i++){JSONObject z=local.getJSONObject(i);map.put(z.getString("id"),z);}for(int i=0;i<remote.length();i++){JSONObject z=remote.getJSONObject(i),old=map.get(z.getString("id"));if(old==null||z.optString("revision").compareTo(old.optString("revision"))>0)map.put(z.getString("id"),z);}put("customZikrs",new JSONArray(map.values()).toString());
     }
-    public synchronized void createZikr(String name,String arabic,String meaning)throws JSONException{
-        JSONArray list=customZikrs();if(list.length()>=200||name.trim().isEmpty()||name.length()>80||arabic.length()>500||meaning.length()>500)throw new IllegalArgumentException("Invalid dhikr");
-        list.put(new JSONObject().put("id","custom-"+UUID.randomUUID()).put("name",name.trim()).put("arabic",arabic.trim()).put("meaning",meaning.trim()));
-        SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{put("customZikrs",list.toString());put("selectedId",list.optJSONObject(list.length()-1).optString("id"));db.setTransactionSuccessful();}finally{db.endTransaction();}
+    public synchronized void createZikr(String name,String arabic,String meaning)throws JSONException{saveZikr("custom-"+UUID.randomUUID(),name,arabic,meaning);}
+    public synchronized void saveZikr(String id,String name,String arabic,String meaning)throws JSONException{
+        name=name.trim();arabic=arabic.trim();meaning=meaning.trim();boolean exists=false;JSONArray old=customZikrs();for(int i=0;i<old.length();i++)if(id.equals(old.optJSONObject(i).optString("id")))exists=true;
+        if((!exists&&old.length()>=500)||(name.isEmpty()&&arabic.isEmpty()&&meaning.isEmpty())||name.length()>80||arabic.length()>500||meaning.length()>500)throw new IllegalArgumentException("Invalid dhikr");
+        if(name.isEmpty()){name=arabic.isEmpty()?meaning:arabic;name=name.substring(0,Math.min(80,name.length()));}
+        long revisionTime=System.currentTimeMillis();for(int i=0;i<old.length();i++){JSONObject z=old.optJSONObject(i);if(id.equals(z.optString("id"))&&!z.optString("revision").isEmpty())try{revisionTime=Math.max(revisionTime,Long.parseLong(z.getString("revision").substring(0,13))+1);}catch(Exception ignored){}}
+        JSONObject item=new JSONObject().put("id",id).put("name",name).put("arabic",arabic).put("meaning",meaning).put("revision",revisionTime+"-"+UUID.randomUUID());mergeZikrs(new JSONArray().put(item));put("selectedId",id);requestSync();
     }
+    public synchronized JSONArray resets(){try{return new JSONArray(value("statResets","[]"));}catch(JSONException e){throw new IllegalStateException(e);}}
+    public synchronized void mergeResets(JSONArray remote)throws JSONException{
+        Map<String,JSONObject> all=new LinkedHashMap<>();JSONArray local=resets();for(int i=0;i<local.length();i++){JSONObject r=local.getJSONObject(i);all.put(r.getString("id"),r);}if(remote!=null)for(int i=0;i<remote.length();i++){JSONObject r=remote.getJSONObject(i);all.putIfAbsent(r.getString("id"),r);}SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{for(JSONObject r:all.values())db.execSQL("DELETE FROM events WHERE julianday(at)>=julianday(?) AND julianday(at)<=julianday(?)",new Object[]{r.getString("from"),r.getString("to")});db.execSQL("DELETE FROM event_counts");db.execSQL("INSERT INTO event_counts SELECT zikr,COUNT(*) FROM events GROUP BY zikr");put("statResets",new JSONArray(all.values()).toString());db.setTransactionSuccessful();}finally{db.endTransaction();}
+    }
+    public synchronized void resetStats(int days)throws JSONException{Instant now=Instant.now();Instant from=LocalDate.now().minusDays(days-1).atStartOfDay(ZoneId.systemDefault()).toInstant();mergeResets(new JSONArray().put(new JSONObject().put("id","reset-"+UUID.randomUUID()).put("from",from.toString()).put("to",now.toString())));requestSync();}
     @Override public void onCreate(SQLiteDatabase db){
         db.execSQL("CREATE TABLE events(id TEXT PRIMARY KEY, zikr TEXT NOT NULL, at TEXT NOT NULL, pending INTEGER NOT NULL)");
         db.execSQL("CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL)");

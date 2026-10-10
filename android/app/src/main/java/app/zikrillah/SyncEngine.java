@@ -29,10 +29,10 @@ public final class SyncEngine {
                 // Drain durable batches, including records added while the request was running.
                 do{
                     JSONArray batch=store.pending();
-                    JSONObject response=request(store.value("base",""),"/api/sync",new JSONObject().put("events",batch).put("customZikrs",store.customZikrs()).put("deletedZikrs",store.deletedZikrs()).put("cursor",Long.parseLong(store.value("serverCursor","0"))),store.value("token",""));
+                    JSONObject response=request(store.value("base",""),"/api/sync",new JSONObject().put("events",batch).put("customZikrs",store.customZikrs()).put("deletedZikrs",store.deletedZikrs()).put("resets",store.resets()).put("cursor",Long.parseLong(store.value("serverCursor","0"))),store.value("token",""));
                     store.mergeZikrs(response.optJSONArray("customZikrs")==null?new JSONArray():response.getJSONArray("customZikrs"));
                     store.mergeDeleted(response.optJSONArray("deletedZikrs")==null?new JSONArray():response.optJSONArray("deletedZikrs"));
-                    store.acknowledge(batch,response.getJSONArray("events"));
+                    store.acknowledge(batch,response.getJSONArray("events"));store.mergeResets(response.optJSONArray("resets"));
                     store.put("serverCursor",String.valueOf(response.optLong("cursor",0)));store.put("syncRetryAt","0");
                     Experience.accept(app,store,response.optJSONObject("experience"));
                     store.put("publication",response.isNull("content")?"null":response.optString("content","null"));

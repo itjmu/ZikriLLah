@@ -6,7 +6,7 @@ import {join,resolve} from 'node:path';
 import {publicContent} from '../bot/publications.js';
 import { fileURLToPath } from 'node:url';
 import { createStore } from './store.js';
-const files = { '/':'index.html', '/app.js':'app.js', '/model.js':'model.js', '/reorder.js':'reorder.js', '/experience.js':'experience.js', '/catalog.js':'catalog.js', '/publication.js':'publication.js', '/links.js':'links.js', '/haptics.js':'haptics.js', '/style.css':'style.css', '/sw.js':'sw.js', '/manifest.webmanifest':'manifest.webmanifest', '/icon.svg':'icon.svg' };
+const files = { '/account-data.js':'account-data.js', '/':'index.html', '/app.js':'app.js', '/model.js':'model.js', '/reorder.js':'reorder.js', '/experience.js':'experience.js', '/catalog.js':'catalog.js', '/publication.js':'publication.js', '/links.js':'links.js', '/haptics.js':'haptics.js', '/style.css':'style.css', '/sw.js':'sw.js', '/manifest.webmanifest':'manifest.webmanifest', '/icon.svg':'icon.svg' };
 const mime = { html:'text/html; charset=utf-8', js:'text/javascript', css:'text/css', wav:'audio/wav', webmanifest:'application/manifest+json', svg:'image/svg+xml' };
 export function createAppServer(store,dir='./data',auth={}){return http.createServer(async(req,res) => {
   const send = (status,data) => { res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'}); res.end(JSON.stringify(data)); };
@@ -49,7 +49,7 @@ export function createAppServer(store,dir='./data',auth={}){return http.createSe
       }
       const user=store.user((req.headers.authorization || '').replace(/^Bearer /,''));
       if(!user) return send(401,{error:'Привяжите устройство через /link в боте'});
-      try { return send(200,{account:String(user),botUsername:auth.botUsername||process.env.BOT_USERNAME||'',broadcasts:store.broadcastFeed(user),events:store.sync(user,data?.events,data?.customZikrs,data?.deletedZikrs,data?.cursor),cursor:store.cursor(user),customZikrs:store.customZikrs(user),deletedZikrs:store.deletedZikrs(user),content:publicContent(store.content()),experience:publicExperience(store)}); } catch { return send(400,{error:'Некорректные записи'}); }
+      try { return send(200,{account:String(user),botUsername:auth.botUsername||process.env.BOT_USERNAME||'',broadcasts:store.broadcastFeed(user),events:store.sync(user,data?.events,data?.customZikrs,data?.deletedZikrs,data?.cursor,data?.resets),cursor:store.cursor(user),resets:store.resets(user),customZikrs:store.customZikrs(user),deletedZikrs:store.deletedZikrs(user),content:publicContent(store.content()),experience:publicExperience(store)}); } catch { return send(400,{error:'Некорректные записи'}); }
     }
     if(/^\/sounds\/(beads|water|rain|stones|soft)\.wav$/.test(path))files[path]=path.slice(1);
     if(req.method!=='GET' || !files[path]) return send(404,{error:'Не найдено'});

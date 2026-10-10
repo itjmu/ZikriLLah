@@ -1,3 +1,4 @@
+import {applyResets} from '../web/account-data.js';
 import {orderedCatalog,cycleIds,nextInCycle} from '../web/model.js';
 import { DatabaseSync } from 'node:sqlite';
 import { randomBytes, createHash } from 'node:crypto';
@@ -9,6 +10,7 @@ export function createStore(dir) {
   mkdirSync(dir, { recursive: true });
   const db = new DatabaseSync(`${dir}/zikrillah.sqlite`);
   db.exec(`PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS events(user TEXT, id TEXT, zikr TEXT, at TEXT, PRIMARY KEY(user,id)); CREATE TABLE IF NOT EXISTS tokens(hash TEXT PRIMARY KEY,user TEXT); CREATE TABLE IF NOT EXISTS codes(hash TEXT PRIMARY KEY,user TEXT,expires INTEGER); CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY,value TEXT);`);
+  db.exec('CREATE TABLE IF NOT EXISTS stat_resets(user TEXT,id TEXT,value TEXT,PRIMARY KEY(user,id))');
   db.exec(`PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS profiles(user TEXT PRIMARY KEY, name TEXT NOT NULL, public INTEGER NOT NULL DEFAULT 0, settings TEXT NOT NULL DEFAULT '{}'); CREATE INDEX IF NOT EXISTS events_at ON events(at);`);
   db.exec(`CREATE TABLE IF NOT EXISTS custom_zikrs(user TEXT,id TEXT,value TEXT,PRIMARY KEY(user,id));`);
   db.exec("CREATE TABLE IF NOT EXISTS deleted_zikrs(user TEXT,id TEXT,PRIMARY KEY(user,id));");
@@ -34,20 +36,22 @@ export function createStore(dir) {
     },
     catalog(user){const row=db.prepare('SELECT settings FROM profiles WHERE user=?').get(String(user));const settings=row?JSON.parse(row.settings):{};return orderedCatalog([...builtinZikrs,...this.sharedZikrs(),...this.customZikrs(user)],settings.zikrOrder||[],this.deletedZikrs(user));},
     deletedZikrs(user){return db.prepare('SELECT id FROM deleted_zikrs WHERE user=?').all(String(user)).map(r=>r.id);},
-    deleteZikrs(user,ids=[]){if(!Array.isArray(ids)||ids.length>200||ids.some(id=>typeof id!=='string'||!/^custom-[a-f0-9-]{36}$/.test(id)))throw Error('Invalid deleted dhikr');
+    deleteZikrs(user,ids=[]){if(!Array.isArray(ids)||ids.length>500||ids.some(id=>typeof id!=='string'||!/^custom-[a-f0-9-]{36}$/.test(id)))throw Error('Invalid deleted dhikr');
       const insert=db.prepare('INSERT OR IGNORE INTO deleted_zikrs VALUES(?,?)');for(const id of ids)insert.run(String(user),id);
     },
+    resets(user){db.exec('CREATE TABLE IF NOT EXISTS stat_resets(user TEXT,id TEXT,value TEXT,PRIMARY KEY(user,id))');return db.prepare('SELECT value FROM stat_resets WHERE user=?').all(String(user)).map(r=>JSON.parse(r.value));},
+    mergeResets(user,items=[]){this.resets(user);if(!Array.isArray(items)||items.length>5000||items.some(r=>!r||!/^reset-[a-f0-9-]{36}$/.test(r.id)||!Number.isFinite(Date.parse(r.from))||!Number.isFinite(Date.parse(r.to))||Date.parse(r.from)>Date.parse(r.to)||Date.parse(r.to)-Date.parse(r.from)>8*86400000||Date.parse(r.to)>Date.now()+300000))throw Error('Invalid reset');for(const r of items){db.prepare('INSERT OR IGNORE INTO stat_resets VALUES(?,?,?)').run(String(user),r.id,JSON.stringify({id:r.id,from:r.from,to:r.to}));}},
     customZikrs(user){return db.prepare('SELECT value FROM custom_zikrs WHERE user=? ORDER BY rowid').all(String(user)).map(r=>JSON.parse(r.value));},
     mergeZikrs(user,items=[]){
-      if(!Array.isArray(items)||items.length>200)throw Error('Invalid custom dhikr');
+      if(!Array.isArray(items)||items.length>500)throw Error('Invalid custom dhikr');
       const cleaned=items.map(z=>{
-        if(!z||!/^custom-[a-f0-9-]{36}$/.test(z.id)||typeof z.name!=='string'||!z.name.trim()||z.name.length>80||typeof z.arabic!=='string'||z.arabic.length>500||typeof z.meaning!=='string'||z.meaning.length>500)throw Error('Invalid custom dhikr');
-        return {id:z.id,name:z.name.trim(),arabic:z.arabic,meaning:z.meaning};
+        if(!z||(!/^custom-[a-f0-9-]{36}$/.test(z.id)&&![...builtinZikrs,...this.sharedZikrs()].some(x=>x.id===z.id))||typeof z.name!=='string'||!(z.name+z.arabic+z.meaning).trim()||z.name.length>80||typeof z.arabic!=='string'||z.arabic.length>500||typeof z.meaning!=='string'||z.meaning.length>500)throw Error('Invalid custom dhikr');
+        if(z.revision!==undefined&&!/^\d{13}-[a-f0-9-]{36}$/.test(z.revision))throw Error('Invalid revision');return {id:z.id,name:z.name.trim()||(z.arabic.trim()||z.meaning.trim()).slice(0,80),arabic:z.arabic,meaning:z.meaning,...(z.revision?{revision:z.revision}:{})};
       });
-      const existing=this.customZikrs(user);if(new Set([...existing,...cleaned].map(z=>z.id)).size>200)throw Error('Too many custom dhikrs');
-      for(const z of cleaned){const old=existing.find(x=>x.id===z.id);if(old&&JSON.stringify(old)!==JSON.stringify(z))throw Error('Conflicting dhikr');}
-      const insert=db.prepare('INSERT OR IGNORE INTO custom_zikrs VALUES(?,?,?)');
-      for(const z of cleaned)insert.run(String(user),z.id,JSON.stringify(z));
+      const existing=this.customZikrs(user);if(new Set([...existing,...cleaned].map(z=>z.id)).size>500)throw Error('Too many custom dhikrs');
+      for(const z of cleaned){const old=existing.find(x=>x.id===z.id);if(old&&!old.revision&&!z.revision&&JSON.stringify(old)!==JSON.stringify(z))throw Error('Conflicting dhikr');}
+      const insert=db.prepare('INSERT OR REPLACE INTO custom_zikrs VALUES(?,?,?)');
+      for(const z of cleaned){const row=db.prepare('SELECT value FROM custom_zikrs WHERE user=? AND id=?').get(String(user),z.id),old=row?JSON.parse(row.value):null;if(!old||(z.revision||'')>(old.revision||''))insert.run(String(user),z.id,JSON.stringify(z));}
       return this.customZikrs(user);
     },
     content(){const row=db.prepare('SELECT value FROM meta WHERE key=?').get('publication');return row?JSON.parse(row.value):null;},
@@ -69,11 +73,12 @@ export function createStore(dir) {
     botTap(user,event){
       const ids=this.catalog(user).map(z=>z.id);
       if(!ids.includes(event.zikr)||!Number.isFinite(Date.parse(event.at)))throw new Error('Invalid bot event');
+      if(!applyResets([event],this.resets(user)).length)return false;
       db.exec('BEGIN IMMEDIATE');
       try{
-        const inserted=db.prepare('INSERT OR IGNORE INTO events VALUES(?,?,?,?)').run(String(user),event.id,event.zikr,event.at).changes;
+      const inserted=db.prepare('INSERT OR IGNORE INTO events VALUES(?,?,?,?)').run(String(user),event.id,event.zikr,event.at).changes;
         if(inserted){const settings=this.profile(user).settings;settings.selected=event.zikr;
-          const count=db.prepare('SELECT COUNT(*) AS n FROM events WHERE user=? AND zikr=?').get(String(user),event.zikr).n;
+          const count=applyResets(db.prepare('SELECT at FROM events WHERE user=? AND zikr=?').all(String(user),event.zikr),this.resets(user)).length;
           if(settings.autoNext&&count%settings.goal===0)settings.selected=nextInCycle(this.catalog(user),settings.cycleZikrs??null,event.zikr);
           this.configure(user,settings);
         }
@@ -81,7 +86,7 @@ export function createStore(dir) {
       }catch(e){db.exec('ROLLBACK');throw e;}
     },
     ranking(since,until){
-      return db.prepare(`SELECT p.user,p.name,COUNT(*) AS count FROM events e JOIN profiles p ON p.user=e.user AND p.public=1 WHERE julianday(e.at)>=julianday(?) AND julianday(e.at)<=julianday(?) GROUP BY p.user,p.name ORDER BY count DESC,p.user ASC`).all(since,until);
+      return db.prepare(`SELECT p.user,p.name,COUNT(*) AS count FROM events e JOIN profiles p ON p.user=e.user AND p.public=1 WHERE NOT EXISTS (SELECT 1 FROM stat_resets r WHERE r.user=e.user AND julianday(e.at)>=julianday(json_extract(r.value,'$.from')) AND julianday(e.at)<=julianday(json_extract(r.value,'$.to'))) AND julianday(e.at)>=julianday(?) AND julianday(e.at)<=julianday(?) GROUP BY p.user,p.name ORDER BY count DESC,p.user ASC`).all(since,until);
     },
     code(user) {
       const code = randomBytes(12).toString('hex');
@@ -103,16 +108,16 @@ export function createStore(dir) {
     },
     user(token) { return db.prepare('SELECT user FROM tokens WHERE hash=?').get(hash(token))?.user; },
     cursor(user){return db.prepare("SELECT COALESCE(MAX(rowid),0) AS cursor FROM events WHERE user=?").get(String(user)).cursor;},
-    sync(user, events, customZikrs=[],deletedZikrs=[],cursor=0) {
-      if(!Number.isSafeInteger(cursor)||cursor<0)throw Error("Invalid cursor");
-      this.mergeZikrs(user,customZikrs);this.deleteZikrs(user,deletedZikrs);
-      const ids=[...builtinZikrs,...this.sharedZikrs(),...this.customZikrs(user)].map(z=>z.id);
-      if (!Array.isArray(events) || events.length > 5000 || events.some(e => !e || typeof e.id !== 'string' || !/^[a-zA-Z0-9-]{8,100}$/.test(e.id) || !ids.includes(e.zikr) || typeof e.at !== 'string' || !Number.isFinite(Date.parse(e.at)))) throw new Error('Invalid events');
-      const insert = db.prepare('INSERT OR IGNORE INTO events VALUES(?,?,?,?)');
-      db.exec('BEGIN');
-      try { for (const e of events) insert.run(String(user),e.id,e.zikr,e.at); db.exec('COMMIT'); }
-      catch(e) { db.exec('ROLLBACK'); throw e; }
-      return db.prepare('SELECT id,zikr,at FROM events WHERE user=? AND rowid>? ORDER BY at,id').all(String(user),cursor);
+    sync(user, events, customZikrs=[],deletedZikrs=[],cursor=0,resets=[]) {
+      if(!Number.isSafeInteger(cursor)||cursor<0)throw Error('Invalid cursor');
+      db.exec('BEGIN IMMEDIATE');try{
+        this.mergeZikrs(user,customZikrs);this.deleteZikrs(user,deletedZikrs);
+        const ids=[...builtinZikrs,...this.sharedZikrs(),...this.customZikrs(user)].map(z=>z.id);
+        if(!Array.isArray(events)||events.length>5000||events.some(e=>!e||typeof e.id!=='string'||! /^[a-zA-Z0-9-]{8,100}$/.test(e.id)||!ids.includes(e.zikr)||typeof e.at!=='string'||!Number.isFinite(Date.parse(e.at))))throw Error('Invalid events');
+        this.mergeResets(user,resets);const ledger=this.resets(user),insert=db.prepare('INSERT OR IGNORE INTO events VALUES(?,?,?,?)');
+        for(const e of applyResets(events,ledger))insert.run(String(user),e.id,e.zikr,e.at);
+        const result=applyResets(db.prepare('SELECT id,zikr,at FROM events WHERE user=? AND rowid>? ORDER BY at,id').all(String(user),ledger.length?0:cursor),ledger);db.exec('COMMIT');return result;
+      }catch(e){db.exec('ROLLBACK');throw e;}
     }
   };
 }

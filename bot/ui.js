@@ -2,7 +2,7 @@ import {cycleIds} from '../web/model.js';
 import {report,rankRange,localTime} from './stats.js';
 export {builtinZikrs as zikrs} from '../web/catalog.js';
 import {builtinZikrs} from '../web/catalog.js';
-const button=(text,data)=>({text,callback_data:data,...(data==='tasbih'?{style:'success'}:data.startsWith('remove:')?{style:'danger'}:['settings','stats','reminder'].includes(data)?{style:'primary'}:{})});
+const button=(text,data)=>({text,callback_data:data,...(data==='tasbih'?{style:'success'}:(data.startsWith('remove:')||data.startsWith('resetstats:'))?{style:'danger'}:['settings','stats','reminder'].includes(data)?{style:'primary'}:{})});
 const back=[button('← Меню','home')];
 const f=n=>n.toLocaleString('ru-RU');
 export const zikrKeyboard=(id,zikrs=builtinZikrs,showText=true)=>({keyboard:[[{text:showText?`📿 ${zikrs.find(z=>z.id===id).name}`:'📿 +1'}]],resize_keyboard:false,is_persistent:true,one_time_keyboard:false,input_field_placeholder:'Нажмите большую кнопку для зикра'});
@@ -19,7 +19,7 @@ export function screen(store,user,page='home',now=new Date(),publicUrl=''){
   if(page.startsWith('manage:')||page.startsWith('delete:')){
  const id=page.slice(page.indexOf(':')+1),z=zikrs.find(z=>z.id===id);if(!z)return screen(store,user,'choose',now,publicUrl);
  if(page.startsWith('delete:'))return view('Удалить «'+z.name+'»? История счёта сохранится.',[[button('Удалить','remove:'+id)],[button('Отмена','manage:'+id)]]);
- const chosen=cycleIds(zikrs,s.cycleZikrs??null),rows=[[button('Только этот','only:'+id)],[button(chosen.includes(id)?'☑ В цикле':'☐ Добавить в цикл','cycle:'+id)],[button('↑ Выше','up:'+id),button('↓ Ниже','down:'+id)]];
+ const chosen=cycleIds(zikrs,s.cycleZikrs??null),rows=[[button('✎ Изменить текст','editzikr:'+id)],[button('Только этот','only:'+id)],[button(chosen.includes(id)?'☑ В цикле':'☐ Добавить в цикл','cycle:'+id)],[button('↑ Выше','up:'+id),button('↓ Ниже','down:'+id)]];
  if(id.startsWith('custom-'))rows.push([button('🗑 Удалить свой зикр','delete:'+id)]);
  return view(z.name+'\n\nГалочка включает зикр в цикл. Хотя бы один зикр должен остаться. Стрелки меняют порядок.',rows.concat([[button('← Список','choose')]]));
  }
@@ -35,7 +35,7 @@ export function screen(store,user,page='home',now=new Date(),publicUrl=''){
   if(page==='settings')return view(`⚙️ Настройки бота\n\nПовторений в круге: ${s.goal}\nЧасовой пояс: ${zone}\n\nНастройки практики отдельные для каждого устройства. Общая история объединяется.`,[[button('📿 Вернуться к счёту','tasbih')],[button('Выбрать зикры / цикл','choose')],[button('🔔 Напоминание','reminder')],[button('Повторений в круге','goals')],[button(`Смена зикра: ${s.autoNext?'вкл':'выкл'}`,`auto:${s.autoNext?0:1}`)],[button(`Текст зикра: ${s.showText?'виден':'скрыт'}`,`text:${s.showText?0:1}`)],[button('Часовой пояс','timezone'),button('Участие в рейтинге','privacy')],back]);
   if(page==='stats'){
     const max=Math.max(1,...r.week.map(d=>d.count));const days=r.week.map(d=>`${d.day.slice(5)}  ${'▰'.repeat(Math.round(d.count/max*8))||'·'} ${f(d.count)}`).join('\n');
-    return view(`📊 Ваш прогресс · ${zone}\n\nСегодня: ${f(r.today)}\nВчера: ${f(r.yesterday)}\nЗа 7 дней: ${f(r.week.reduce((n,d)=>n+d.count,0))}\nЗа месяц: ${f(r.month)}\nЗа всё время: ${f(r.total)}\n\nСерия: ${r.streak} дн.\nАктивных дней: ${r.activeDays}\nЛучший день: ${r.best?`${r.best[0]} · ${f(r.best[1])}`:'—'}\n\n${zikrs.slice(0,12).map(z=>`${z.name}: ${f(r.byZikr[z.id]||0)}`).join('\n')}${zikrs.length>12?'\nСвои зикры: '+f(zikrs.slice(12).reduce((n,z)=>n+(r.byZikr[z.id]||0),0)):''}\n\nПоследние 7 дней\n${days}\n\nПервая запись: ${localTime(r.first,s.utcOffset)}\nПоследняя запись: ${localTime(r.last,s.utcOffset)}\n\nУчитываются записи бота и синхронизированных устройств.`,[[button('Обновить','stats'),button('🏆 Рейтинг','rank:day')],back]);
+    return view(`📊 Ваш прогресс · ${zone}\n\nСегодня: ${f(r.today)}\nВчера: ${f(r.yesterday)}\nЗа 7 дней: ${f(r.week.reduce((n,d)=>n+d.count,0))}\nЗа месяц: ${f(r.month)}\nЗа всё время: ${f(r.total)}\n\nСерия: ${r.streak} дн.\nАктивных дней: ${r.activeDays}\nЛучший день: ${r.best?`${r.best[0]} · ${f(r.best[1])}`:'—'}\n\n${zikrs.slice(0,12).map(z=>`${z.name}: ${f(r.byZikr[z.id]||0)}`).join('\n')}${zikrs.length>12?'\nСвои зикры: '+f(zikrs.slice(12).reduce((n,z)=>n+(r.byZikr[z.id]||0),0)):''}\n\nПоследние 7 дней\n${days}\n\nПервая запись: ${localTime(r.first,s.utcOffset)}\nПоследняя запись: ${localTime(r.last,s.utcOffset)}\n\nУчитываются записи бота и синхронизированных устройств.`,[[button('Обновить','stats'),button('🏆 Рейтинг','rank:day')],[button('Сбросить сегодня','resetstats:1'),button('Сбросить 7 дней','resetstats:7')],back]);
   }
   if(page.startsWith('rank:')){
     const period=page.split(':')[1];if(!['day','week','all'].includes(period))return screen(store,user,'home',now,publicUrl);
